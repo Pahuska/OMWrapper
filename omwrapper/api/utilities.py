@@ -177,3 +177,63 @@ def get_plug_value(plug:om.MPlug, data_type:DataType=None, as_string:bool=False,
             return None
     else:
         raise TypeError('Unsupported plug type')
+
+def set_plug_value(plug:om.MPlug, value:Any, data_type:DataType=None):
+    # If the value is an MObject or MDataHandle, pass it directly to the corresponding method and don't ask questions
+    if isinstance(value, om.MObject):
+        plug.setMObject(value)
+        return
+
+    if isinstance(value, om.MDataHandle):
+        plug.setMDataHandle(value)
+        return
+
+    # if the data type wasn't provided we need to figure it out
+    if data_type is None:
+        data_type = DataType.from_mobject(plug.attribute())
+
+    # Handle the compound case
+    if plug.isCompound:
+        num_children = plug.numChildren()
+        if len(value) >= num_children:
+            for x in range(num_children):
+                set_plug_value(plug=plug.child(x), value=value[x])
+            return
+        else:
+            raise ValueError('Compound Attribute : value length does not match the amount of children')
+
+    # Use the proper plug.setXXX method depending on the data type.
+
+    if data_type == DataType.FLOAT:
+        plug.setFloat(plug, value)
+    elif data_type == DataType.INT:
+        plug.setInt(plug, value)
+    elif data_type == DataType.ENUM:
+        if isinstance(value, str):
+            mfn = om.MFnEnumAttribute(plug.attribute())
+            value = mfn.fieldValue(value)
+        plug.setInt(plug, value)
+    elif data_type == DataType.BOOL:
+        plug.setBool(plug, value)
+    elif data_type == DataType.ANGLE:
+        if not isinstance(value, om.MAngle):
+            value = DataType.to_angle(value)
+        plug.setMAngle(plug, value)
+    elif data_type == DataType.DISTANCE:
+        if not isinstance(value, om.MDistance):
+            value = DataType.to_distance(value)
+        plug.setMDistance(plug, value)
+    elif data_type == DataType.STRING:
+        if not isinstance(value, str):
+            value = DataType.to_string(value)
+        plug.setString(plug, value)
+    elif data_type == DataType.MATRIX:
+        if not isinstance(value, (om.MMatrix, om.MTransformationMatrix)):
+            value = DataType.to_matrix(value)
+        data = om.MFnMatrixData()
+        mobj = data.create(value)
+        set_plug_value(plug, mobj, DataType.MATRIX)
+    elif data_type == DataType.TIME:
+        if not isinstance(value, om.MTime):
+            value = DataType.to_time(value)
+        plug.setMTime(value)

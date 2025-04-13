@@ -71,9 +71,9 @@ class DGModifier(AbstractModifier, om.MDGModifier):
             if len(value) >= num_children:
                 for x in range(num_children):
                     self.set_plug_value(plug.child(x), value[x])
-                    return
-                else:
-                    raise ValueError('Compound Attribute : value length does not match the amount of children')
+                return
+            else:
+                raise ValueError('Compound Attribute : value length does not match the amount of children')
 
         # Use the proper newPlugValueXXX method depending on the data type.
 

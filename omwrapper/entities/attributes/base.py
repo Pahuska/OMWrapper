@@ -4,8 +4,10 @@ from typing import Dict, List, Union, Any
 from maya.api import OpenMaya as om
 
 from omwrapper.api import apiundo
+from omwrapper.api.modifiers.base import add_modifier
 from omwrapper.api.modifiers.custom import ProxyModifier
-from omwrapper.api.utilities import get_plug_value
+from omwrapper.api.modifiers.maya import DGModifier, DagModifier
+from omwrapper.api.utilities import get_plug_value, set_plug_value
 from omwrapper.constants import DataType, AttrType
 from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
 from omwrapper.pytools import Iterator
@@ -287,6 +289,27 @@ class Attribute(MayaObject):
                 return plug_array_to_attribute(plug_array)
 
     def get(self, as_string:bool=False, time:TTime=None, context:om.MDGContext=None) -> Any:
+        """
+        Retrieves the value of the attribute at a specified time or within a given evaluation context.
+
+        Args:
+            as_string (bool, optional): If True, for enum attributes, the value is returned as a string corresponding
+                                        to the field name. Defaults to False.
+            time (float, int, MTime, optional): The time at which to evaluate the attribute. Can be:
+                - A float or int, interpreted as a frame number.
+                - An `MTime` object, directly used to create the evaluation context.
+                - None, in which case the default context (`MDGContext.kNormal`) is used, unless overridden by `context`.
+            context (MDGContext, optional): The evaluation context to use. If provided, this takes precedence over
+                                           the `time` parameter. Defaults to None.
+
+        Returns:
+            Any: The value of the attribute at the specified time or in the specified context.
+
+        Notes:
+            - If `context` is provided, it overrides the `time` parameter for creating the evaluation context.
+            - If `time` is provided but not as an `MTime` object, it is converted to one using the current time unit.
+            - The value is retrieved using the `get_plug_value` method, which handles the attribute's data type and context.
+        """
         if context is not None:
             eval_ctx = context
         elif time is not None:
@@ -300,6 +323,49 @@ class Attribute(MayaObject):
         value = get_plug_value(plug=self.api_mplug(), as_string=as_string, context=eval_ctx)
         return value
 
+    @recycle_mplug
+    def set_(self, value:Any, data_type:DataType=None, mplug:om.MPlug=None):
+        """
+        Sets the value of the attribute using the specified MPlug.
 
-    def set(self):
-        ...
+        This method provides a simpler and direct way to set the value of an attribute without managing undo or
+        modifiers. The MPlug argument is optional and will be derived from the instance if not provided.
+
+        Args:
+            value (Any): The value to set on the attribute.
+            data_type (DataType, optional): The type of the data being set. If not provided, it will be inferred
+                                            based on the plug's attribute.
+            mplug (MPlug, optional): The MPlug representing the attribute. If not provided, it defaults to the
+                                     plug derived from the instance.
+
+        Notes:
+            - This method uses `set_plug_value` for setting the plug value.
+            - No undo functionality or modifiers are applied.
+        """
+        set_plug_value(plug=mplug, value=value, data_type=data_type)
+
+    @recycle_mplug
+    @add_modifier(DGModifier, undo=True)
+    def set(self, value:Any, data_type:DataType=None, mplug:om.MPlug=None, _modifier:Union[DGModifier, DagModifier]=None):
+        """
+        Sets the value of the attribute with undo and modifier management.
+
+        This method allows for modifying the attribute value while integrating Maya's undo/redo functionality.
+        If a modifier is not provided, one will be instantiated and managed internally.
+        If one is provided though, executing the doIt function will be the user's responsibility.
+
+        Args:
+            value (Any): The value to set on the attribute.
+            data_type (DataType, optional): The type of the data being set. If not provided, it will be inferred
+                                            based on the plug's attribute.
+            mplug (MPlug, optional): The MPlug representing the attribute. If not provided, it defaults to the
+                                        plug derived from the instance.
+            _modifier (Union[DGModifier, DagModifier], optional): An optional modifier to manage the operation.
+                                                                  If not provided, a `DGModifier` is created.
+
+        Notes:
+            - This method uses `_modifier.set_plug_value` to perform the operation.
+            - The `add_modifier` decorator ensures undo/redo functionality is managed seamlessly.
+            - The `recycle_mplug` decorator ensures the `mplug` argument is initialized if not provided.
+        """
+        _modifier.set_plug_value(plug=mplug, value=value, data_type=data_type)

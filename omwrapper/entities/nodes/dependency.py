@@ -48,7 +48,7 @@ class DependNode(MayaObject):
         name = mfn.setName(name)
         return name
 
-    @add_modifier(DGModifier)
+    @add_modifier(DGModifier, undo=True)
     def rename(self, name:str, _modifier:TModifier) -> str:
         """
         Rename the node
