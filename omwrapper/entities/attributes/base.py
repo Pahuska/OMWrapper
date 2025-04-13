@@ -1,0 +1,305 @@
+from functools import wraps
+from typing import Dict, List, Union, Any
+
+from maya.api import OpenMaya as om
+
+from omwrapper.api import apiundo
+from omwrapper.api.modifiers.custom import ProxyModifier
+from omwrapper.api.utilities import get_plug_value
+from omwrapper.constants import DataType, AttrType
+from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
+from omwrapper.pytools import Iterator
+
+TInputs = Union[List[om.MPlug, "Attribute",...], om.MPlug, "Attribute", None]
+TOutputs = Union[List[TInputs], None]
+
+def recycle_mplug(func):
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        inst = args[0]
+        mfn = kwargs.get('mplug', None)
+        if mfn is None:
+            kwargs['mplug'] = inst.apim_plug()
+        result = func(*args, **kwargs)
+        return result
+    return wrapped
+
+TTime = Union[float, int, om.MTime]
+class Attribute(MayaObject):
+    _mfn_class = om.MFnAttribute
+    _mfn_constant = om.MFn.kAttribute
+
+    def __init__(self, **kwargs:TMayaObjectApi):
+        super().__init__(**kwargs)
+        self._node = kwargs.get('node', None)
+        self._parent = kwargs.get('parent', None)
+        self._data_type = None
+        self._attr_type = None
+
+    def api_mfn(self) -> om.MFnBase:
+        return self._mfn_class(self.api_mobject())
+
+    def api_mplug(self) -> om.MPlug:
+        return self._api_input['MPlug']
+
+    def api_mdagpath(self):
+        #ToDo: implement this when DagNode will be available
+        ...
+
+    def name(self, include_node=True, alias=False, full_attr_path=False, long_names=True) -> str:
+        plug_name = self.api_mplug().partialName(includeNodeName=include_node, useAlias=alias,
+                                               useFullAttributePath=full_attr_path, useLongNames=long_names)
+        return plug_name
+
+    @classmethod
+    def get_build_data_from_name(cls, name:str) -> Dict[str, TMayaObjectApi]:
+        sel = om.MSelectionList()
+        sel.add(name)
+
+        try:
+            mplug = sel.getPlug(0)
+        except TypeError:
+            raise TypeError(f'{name} is not a valid attribute')
+
+        return {'MObjectHandle':om.MObjectHandle(mplug.attribute()), 'MPlug':mplug}
+
+    @recycle_mfn
+    def attr_name(self, long_name:bool=True, include_node:bool=True, mfn:om.MFnAttribute=None) -> str:
+        if long_name:
+            name = mfn.name
+        else:
+            name = mfn.shortName
+        if include_node:
+            return f'{self.node().name()}.{name}'
+
+    def node(self) -> MayaObject:
+        if self._node is None:
+            handle = om.MObjectHandle(self.api_mplug().node())
+            self._node = self._factory(MObjectHandle=handle)
+        return self._node
+
+    @recycle_mfn
+    def rename(self, name:str, short_name=False, mfn:om.MFnAttribute=None):
+        if short_name:
+            mfn.shortName = name
+        else:
+            mfn.name = name
+
+    def attr_type(self) -> DataType:
+        if self._data_type is None:
+            self._data_type = DataType.from_mobject(self.api_mobject())
+        return self._data_type
+
+    def data_type(self) -> AttrType:
+        if self._attr_type is None:
+            self._attr_type = AttrType.from_mobject(self.api_mobject())
+        return self._attr_type
+
+    @recycle_mplug
+    def index(self, mplug) -> int:
+        """
+        if this is a multi attribute, return the index of this particular element
+        Args:
+            mplug (MPLug, optional): an optional MPlug representing this attribute
+
+        Returns:
+            int: the index of this attribute
+
+        """
+        return mplug.logicalIndex()
+
+    @recycle_mplug
+    def multi_indices(self, mplug:om.MPlug) -> List[int]:
+        return mplug.getExistingArrayAttributeIndices()
+
+    @recycle_mplug
+    def parent(self, mplug:om.MPlug):
+        if self._parent is not None:
+            return self._parent
+
+        try:
+            parent_plug = mplug.parent()
+        except TypeError:
+            return None
+        parent_mobject = parent_plug.attribute()
+        return self._factory(MPlug=parent_plug, MObjectHandle=om.MObjectHandle(parent_mobject), node=self.node())
+
+    @recycle_mplug
+    def is_free_to_change(self, mplug:om.MPlug):
+        ftc = mplug.isFreeToChange()
+        if ftc == om.MPlug.kFreeToChange:
+            return 1
+        elif ftc == om.MPlug.kNotFreeToChange:
+            return 0
+        else:  # ftc == om2.MPlug.kChildrenNotFreeToChange
+            return -1
+
+    @recycle_mplug
+    def is_keyable(self, mplug:om.MPlug) -> bool:
+        return mplug.isKeyable
+
+    @recycle_mplug
+    def set_keyable_(self, value, mplug:om.MPlug):
+        mplug.isKeyable = value
+        if not value:
+            mplug.isChannelBox = True
+        else:
+            mplug.isChannelBox = False
+
+    @recycle_mplug
+    def set_keyable(self, value, mplug:om.MPlug):
+        old_value = self.is_keyable(mplug=mplug)
+        modifier = ProxyModifier(do_func=self.set_keyable_,
+                                 do_kwargs={'value':value, 'mplug':mplug},
+                                 undo_kwargs={'value':old_value, 'mplug':mplug})
+        modifier.doIt()
+        apiundo.commit(undo=modifier.undoIt, redo=modifier.doIt)
+
+    @recycle_mplug
+    def is_displayable(self, mplug: om.MPlug) -> bool:
+        return mplug.isChannelBox
+
+    @recycle_mplug
+    def set_displayable_(self, value, mplug: om.MPlug):
+        mplug.isChannelBox = value
+
+    @recycle_mplug
+    def set_displayable(self, value, mplug: om.MPlug):
+        old_value = self.is_displayable(mplug=mplug)
+        modifier = ProxyModifier(do_func=self.set_displayable_,
+                                 do_kwargs={'value': value, 'mplug': mplug},
+                                 undo_kwargs={'value': old_value, 'mplug': mplug})
+        modifier.doIt()
+        apiundo.commit(undo=modifier.undoIt, redo=modifier.doIt)
+
+    @recycle_mplug
+    def is_locked(self, mplug: om.MPlug) -> bool:
+        return mplug.isLocked
+
+    @recycle_mplug
+    def set_locked_(self, value, mplug: om.MPlug):
+        mplug.isLocked = value
+
+    @recycle_mplug
+    def set_locked(self, value, mplug: om.MPlug):
+        old_value = self.is_locked(mplug=mplug)
+        modifier = ProxyModifier(do_func=self.set_locked_,
+                                 do_kwargs={'value': value, 'mplug': mplug},
+                                 undo_kwargs={'value': old_value, 'mplug': mplug})
+        modifier.doIt()
+        apiundo.commit(undo=modifier.undoIt, redo=modifier.doIt)
+
+    @recycle_mplug
+    def is_dynamic(self, mplug: om.MPlug) -> bool:
+        return mplug.isDynamic
+
+    @recycle_mfn
+    def is_multi(self, mfn: om.MFnAttribute) -> bool:
+        return mfn.array
+
+    @recycle_mplug
+    def is_source(self, mplug: om.MPlug):
+        return mplug.isSource
+
+    @recycle_mplug
+    def is_destination(self, mplug: om.MPlug):
+        return mplug.isDestination
+
+    @recycle_mplug
+    def source(self, skip_conversion:bool=True, as_api:bool=False, mplug:om.MPlug=None) -> TInputs:
+        if mplug.isArray:
+            result = []
+            indices = mplug.getExistingArrayAttributeIndices()
+            it = Iterator(indices)
+            while not it.is_done():
+                index = it.current_item()
+                plug = mplug.elementByLogicalIndex(index)
+                if plug.isDestination:
+                    if skip_conversion:
+                        src = plug.source()
+                    else:
+                        src = plug.sourceWithConversion()
+
+                    if as_api:
+                        result.append(src)
+                    else:
+                        result.append(self._factory(src))
+                it.next()
+            return result #ToDo: what's the problem here ?
+        else:
+            if not mplug.isDestination:
+                return None
+            if skip_conversion:
+                src = mplug.source()
+            else:
+                src = mplug.sourceWithConversion()
+
+            if as_api:
+                return src
+            else:
+                return self._factory(src)
+
+    @recycle_mplug
+    def destinations(self, skip_conversion:bool=True, as_api:bool=False, mplug:om.MPlug=None) -> TOutputs:
+
+        def plug_array_to_attribute(array) -> List:
+            plug_list = []
+            array_it = Iterator(array)
+            while not array_it.is_done():
+                p = array_it.current_item()
+                plug_list.append(self._factory(p))
+                array_it.next()
+            return plug_list
+
+        if mplug.isArray:
+            result = []
+            indices = mplug.getExistingArrayAttributeIndices()
+            it = Iterator(indices)
+
+            while not it.is_done():
+                idx = it.current_item()
+                p = mplug.elementByLogicalIndex(idx)
+                if p.isSource:
+                    if skip_conversion:
+                        plug_array = p.destinations()
+                    else:
+                        plug_array = p.destinationsWithConversion()
+
+                    if as_api:
+                        result.append(plug_array)
+                    else:
+                        result.append(plug_array_to_attribute(plug_array))
+
+                it.next()
+            return result
+        else:
+            if not mplug.isSource:
+                return None
+
+            if skip_conversion:
+                plug_array = mplug.destinations()
+            else:
+                plug_array = mplug.destinationsWithConversions()
+
+            if as_api:
+                return plug_array
+            else:
+                return plug_array_to_attribute(plug_array)
+
+    def get(self, as_string:bool=False, time:TTime=None, context:om.MDGContext=None) -> Any:
+        if context is not None:
+            eval_ctx = context
+        elif time is not None:
+            if isinstance(time, om.MTime):
+                eval_ctx = om.MDGContext(time)
+            else:
+                eval_ctx = om.MDGContext(om.MTime(time, unit=om.MTime.uiUnit()))
+        else:
+            eval_ctx = om.MDGContext.kNormal
+
+        value = get_plug_value(plug=self.api_mplug(), as_string=as_string, context=eval_ctx)
+        return value
+
+
+    def set(self):
+        ...
