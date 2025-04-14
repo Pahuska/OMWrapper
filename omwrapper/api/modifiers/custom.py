@@ -4,7 +4,6 @@ from omwrapper.api.modifiers.base import AbstractModifier, TModifier
 from omwrapper.pytools import Iterator
 
 
-# ToDo: Docstrings and TypeHint
 class CompoundModifier(AbstractModifier):
     def __init__(self, *args: TModifier):
         """

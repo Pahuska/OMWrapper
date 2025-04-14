@@ -89,7 +89,7 @@ class PyObject:
 
         #ToDo : make a method somewhere that would convert args into kwargs so that we can use that to jump straight to
         # case 4 and avoid the situation where we get a string, process it, pass it back into PyObject, process it again
-        # and pass it a third time into PyObject
+        # and pass it a third time into PyObject (although is it really that bad ? ask Copilot maybe ?)
         if len(args) == 1:
             # CASE 1 : a string was provided, and we are looking for a corresponding API object. We then call PyObject
             # again with whatever we found

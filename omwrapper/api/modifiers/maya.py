@@ -7,7 +7,6 @@ from omwrapper.constants import DataType
 
 
 class DGModifier(AbstractModifier, om.MDGModifier):
-    # ToDo: implement setPlugValue, connect and disconnect
     def doIt(self) -> None:
         om.MDGModifier.doIt(self)
 
@@ -110,6 +109,44 @@ class DGModifier(AbstractModifier, om.MDGModifier):
             if not isinstance(value, om.MTime):
                 value = DataType.to_time(value)
             self.newPlugValueMTime(value)
+
+    def connect_(self, s_plug:om.MPlug, d_plug:om.MPlug, force:bool=False, next_available:bool=True):
+        # Check if both plugs are already connected
+        source = d_plug.source()
+        if not source.isNull and s_plug == source:
+            return
+
+        # Check if the destination is locked
+        if d_plug.isLocked():
+            raise AttributeError(f'Destination plug {d_plug} is locked')
+
+        # Get the next available destination plug if d_plug is a multi and next_available is True
+        if next_available and d_plug.isArray:
+            idx = d_plug.evaluateNumElements()
+            d_plug = d_plug.elementByLogicalIndex(idx)
+
+        # If force is True, disconnect everything from d_plug first
+        if force:
+            self.disconnect_(d_plug)
+        self.connect(s_plug, d_plug)
+
+    def disconnect_(self, *args):
+        # if there is one arg, consider it the destination plug and fetch the source
+        # ToDo: check how this works with multi attributes
+        if len(args) == 1:
+            d_plug = args[0]
+            s_plug = d_plug.source()
+        elif len(args) > 1:
+            d_plug = args[1]
+            s_plug = args[0]
+        else:
+            raise ValueError('disconnect_ needs at least the destination plug')
+
+        # if nothing is connected, simply return
+        if s_plug.isNull:
+            return
+
+        self.disconnect(s_plug, d_plug)
 
 
 class DagModifier(DGModifier):

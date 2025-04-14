@@ -7,13 +7,14 @@ from omwrapper.api import apiundo
 from omwrapper.api.modifiers.base import add_modifier
 from omwrapper.api.modifiers.custom import ProxyModifier
 from omwrapper.api.modifiers.maya import DGModifier, DagModifier
-from omwrapper.api.utilities import get_plug_value, set_plug_value
+from omwrapper.api.utilities import get_plug_value, set_plug_value, name_to_api
 from omwrapper.constants import DataType, AttrType
 from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
 from omwrapper.pytools import Iterator
 
 TInputs = Union[List[om.MPlug, "Attribute",...], om.MPlug, "Attribute", None]
 TOutputs = Union[List[TInputs], None]
+TConnect = Union["Attribute", str, om.MPlug]
 
 def recycle_mplug(func):
     @wraps(func)
@@ -27,6 +28,21 @@ def recycle_mplug(func):
     return wrapped
 
 TTime = Union[float, int, om.MTime]
+
+def _as_mplug(attribute:TConnect) -> om.MPlug:
+    if isinstance(attribute, Attribute):
+        return attribute.api_mplug()
+    elif isinstance(attribute, om.MPlug):
+        return attribute
+    elif isinstance(attribute, str):
+        obj = name_to_api(attribute)
+        if isinstance(obj, om.MPlug):
+            return obj
+        else:
+            raise TypeError(f'{attribute} is not an attribute')
+    else:
+        raise TypeError(f'The type of {attribute} ({type(attribute)}) is not supported')
+
 class Attribute(MayaObject):
     _mfn_class = om.MFnAttribute
     _mfn_constant = om.MFn.kAttribute
@@ -38,6 +54,7 @@ class Attribute(MayaObject):
         self._data_type = None
         self._attr_type = None
 
+    # API STUFF
     def api_mfn(self) -> om.MFnBase:
         return self._mfn_class(self.api_mobject())
 
@@ -47,11 +64,6 @@ class Attribute(MayaObject):
     def api_mdagpath(self):
         #ToDo: implement this when DagNode will be available
         ...
-
-    def name(self, include_node=True, alias=False, full_attr_path=False, long_names=True) -> str:
-        plug_name = self.api_mplug().partialName(includeNodeName=include_node, useAlias=alias,
-                                               useFullAttributePath=full_attr_path, useLongNames=long_names)
-        return plug_name
 
     @classmethod
     def get_build_data_from_name(cls, name:str) -> Dict[str, TMayaObjectApi]:
@@ -64,6 +76,12 @@ class Attribute(MayaObject):
             raise TypeError(f'{name} is not a valid attribute')
 
         return {'MObjectHandle':om.MObjectHandle(mplug.attribute()), 'MPlug':mplug}
+
+    # IDENTITY
+    def name(self, include_node=True, alias=False, full_attr_path=False, long_names=True) -> str:
+        plug_name = self.api_mplug().partialName(includeNodeName=include_node, useAlias=alias,
+                                               useFullAttributePath=full_attr_path, useLongNames=long_names)
+        return plug_name
 
     @recycle_mfn
     def attr_name(self, long_name:bool=True, include_node:bool=True, mfn:om.MFnAttribute=None) -> str:
@@ -80,6 +98,18 @@ class Attribute(MayaObject):
             self._node = self._factory(MObjectHandle=handle)
         return self._node
 
+    @recycle_mplug
+    def parent(self, mplug:om.MPlug):
+        if self._parent is not None:
+            return self._parent
+
+        try:
+            parent_plug = mplug.parent()
+        except TypeError:
+            return None
+        parent_mobject = parent_plug.attribute()
+        return self._factory(MPlug=parent_plug, MObjectHandle=om.MObjectHandle(parent_mobject), node=self.node())
+
     @recycle_mfn
     def rename(self, name:str, short_name=False, mfn:om.MFnAttribute=None):
         if short_name:
@@ -87,6 +117,7 @@ class Attribute(MayaObject):
         else:
             mfn.name = name
 
+    # TYPE CONSTANTS
     def attr_type(self) -> DataType:
         if self._data_type is None:
             self._data_type = DataType.from_mobject(self.api_mobject())
@@ -97,6 +128,7 @@ class Attribute(MayaObject):
             self._attr_type = AttrType.from_mobject(self.api_mobject())
         return self._attr_type
 
+    # PARAMETERS
     @recycle_mplug
     def index(self, mplug) -> int:
         """
@@ -115,18 +147,6 @@ class Attribute(MayaObject):
         return mplug.getExistingArrayAttributeIndices()
 
     @recycle_mplug
-    def parent(self, mplug:om.MPlug):
-        if self._parent is not None:
-            return self._parent
-
-        try:
-            parent_plug = mplug.parent()
-        except TypeError:
-            return None
-        parent_mobject = parent_plug.attribute()
-        return self._factory(MPlug=parent_plug, MObjectHandle=om.MObjectHandle(parent_mobject), node=self.node())
-
-    @recycle_mplug
     def is_free_to_change(self, mplug:om.MPlug):
         ftc = mplug.isFreeToChange()
         if ftc == om.MPlug.kFreeToChange:
@@ -135,6 +155,14 @@ class Attribute(MayaObject):
             return 0
         else:  # ftc == om2.MPlug.kChildrenNotFreeToChange
             return -1
+
+    @recycle_mplug
+    def is_dynamic(self, mplug: om.MPlug) -> bool:
+        return mplug.isDynamic
+
+    @recycle_mfn
+    def is_multi(self, mfn: om.MFnAttribute) -> bool:
+        return mfn.array
 
     @recycle_mplug
     def is_keyable(self, mplug:om.MPlug) -> bool:
@@ -191,14 +219,7 @@ class Attribute(MayaObject):
         modifier.doIt()
         apiundo.commit(undo=modifier.undoIt, redo=modifier.doIt)
 
-    @recycle_mplug
-    def is_dynamic(self, mplug: om.MPlug) -> bool:
-        return mplug.isDynamic
-
-    @recycle_mfn
-    def is_multi(self, mfn: om.MFnAttribute) -> bool:
-        return mfn.array
-
+    # INPUTS AND OUTPUTS
     @recycle_mplug
     def is_source(self, mplug: om.MPlug):
         return mplug.isSource
@@ -369,3 +390,65 @@ class Attribute(MayaObject):
             - The `recycle_mplug` decorator ensures the `mplug` argument is initialized if not provided.
         """
         _modifier.set_plug_value(plug=mplug, value=value, data_type=data_type)
+
+    @recycle_mplug
+    @add_modifier(DGModifier, undo=True)
+    def connect(self, destination:TConnect, force:bool=False, next_available:bool=False,
+                mplug:om.MPlug=None, _modifier:DGModifier=None):
+        """
+        Connects the source attribute (represented by the provided or default MPlug)
+        to a destination attribute.
+
+        This method converts the 'destination' parameter into an MPlug using the helper function `_as_mplug` and
+        establishes a connection using the provided DGModifier.
+
+        Args:
+            destination (Attribute, str, MPlug): The destination attribute to connect to.
+            force (bool, optional): If True, forces the connection even if the destination already has a connection.
+                Defaults to False.
+            next_available (bool, optional): If True, connects to the next available index in an array attribute.
+                Defaults to False.
+            mplug (MPlug, optional): The optional MPlug representing this attribute. If not provided, it will be fetched
+                automatically using the api_mplug method
+            _modifier (DGModifier, optional): The modifier used to queue and execute the connection. defaults to a
+                DGModifier is none is provided
+
+        Notes:
+            - The method uses `_modifier.connect_` to perform the actual connection,
+              after converting the destination via `_as_mplug`.
+
+        Returns:
+            None
+        """
+
+        if mplug.isArray and mplug.attribute().hasFn(om.MFn.kTypedAttribute) and not mplug.isDynamic:
+            mplug = mplug.elementByLogicalIndex(0)
+
+        #FixMe: we might need to put this directly in the api_mplug method. What's gonna happen if I try to "get" an
+        # attribute like worldMatrix ?
+
+        _modifier.connect_(s_plug=mplug, d_plug=_as_mplug(destination), force=force, next_available=next_available)
+
+    @recycle_mplug
+    @add_modifier(DGModifier, undo=True)
+    def disconnect(self, *args:TConnect, mplug:om.MPlug=None, _modifier:DGModifier=None):
+        """
+        Disconnects one or more attributes from this attribute.
+
+        The source objects are first converted to MPlugs using the helper function `_as_mplug`.
+
+        Args:
+            *args (TConnect): A variable number of source attributes to disconnect. Each source can be given as an
+                Attribute, a string identifier, or an MPlug.
+            mplug (MPlug, optional): The optional MPlug representing this attribute. If not provided, it will be fetched
+                automatically using the api_mplug method
+            _modifier (DGModifier, optional): The modifier used to queue and execute the connection. defaults to a
+                DGModifier is none is provided
+
+        Returns:
+            None
+        """
+
+        plugs = [_as_mplug(obj) for obj in args]
+        plugs.insert(0, mplug)
+        _modifier.disconnect_(*args)

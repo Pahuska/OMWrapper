@@ -4,6 +4,7 @@ from typing import Union, Tuple, Any
 from maya.api import OpenMaya as om
 
 from omwrapper.api import apiundo
+from omwrapper.api.modifiers.base import TModifier
 from omwrapper.constants import DataType
 
 def unique_object_exists(name:str) -> bool:
