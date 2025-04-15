@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from functools import wraps
-from typing import Dict, List, Union, Any
+from typing import Dict, List, Union, Any, Optional, Iterable
 
 from maya.api import OpenMaya as om
 
@@ -15,6 +16,7 @@ from omwrapper.pytools import Iterator
 TInputs = Union[List[om.MPlug, "Attribute",...], om.MPlug, "Attribute", None]
 TOutputs = Union[List[TInputs], None]
 TConnect = Union["Attribute", str, om.MPlug]
+TDefaultValues = int, float, Iterable[int, float], str
 
 def recycle_mplug(func):
     @wraps(func)
@@ -452,3 +454,82 @@ class Attribute(MayaObject):
         plugs = [_as_mplug(obj) for obj in args]
         plugs.insert(0, mplug)
         _modifier.disconnect_(*args)
+
+@dataclass
+class AttrData:
+    """
+    Represents attribute configuration data similar to the flags used in maya.cmds.addAttr.
+
+    Attributes:
+        long_name (str): The long name for the attribute.
+        short_name (str): The short name for the attribute.
+        attr_type (AttrType): The type of attribute.
+        data_type (Optional[DataType]): The data type of the attribute's value, if applicable.
+        default_value (Optional[int, float, Iterable[int, float]]): The default value for the attribute.
+        keyable (bool): Indicates whether the attribute is keyable for animation. Defaults to False.
+        readable (bool): Indicates whether the attribute is readable. Defaults to True.
+        min (Optional[int, float, Iterable[int, float]]): The minimum allowed value for the attribute.
+        max (Optional[int, float, Iterable[int, float]]): The maximum allowed value for the attribute.
+        soft_min (Optional[int, float, Iterable[int, float]]): The soft minimum value hint for the attribute.
+        soft_max (Optional[int, float, Iterable[int, float]]): The soft maximum value hint for the attribute.
+        multi (Optional[bool]): Specifies if the attribute is multi. False by default.
+        index_matters (Optional[bool]): For multi-attributes, determines if indexing is significant. Defaults to False.
+        enum_names (Optional[str]): A string with names if the attribute is an enum.
+            (e.g.: ('blue:green:red', 'one=1:twenty=20:hundred=100'))
+        as_filename (Optional[bool]): Indicates whether the attribute should be treated as a filename. Defaults to False.
+    """
+
+    long_name: str
+    attr_type: Optional[AttrType] = None
+    data_type: Optional[DataType] = None
+    short_name: Optional[str] = None
+    default_value: Optional[TDefaultValues] = None
+
+    keyable: bool = False
+    readable: bool = True
+    min: Optional[TDefaultValues] = None
+    max: Optional[TDefaultValues] = None
+    soft_min: Optional[TDefaultValues] = None
+    soft_max: Optional[TDefaultValues] = None
+    multi: Optional[bool] = False
+    index_matters: Optional[bool] = False
+    enum_names: Optional[str] = None
+    as_filename: Optional[bool] = False
+
+class AttrFactory:
+    def __new__(cls, data:AttrData) -> om.MFnAttribute:
+        data = cls.process_data(data)
+
+    @classmethod
+    def process_data(cls, data:AttrData) -> AttrData:
+        # If no short name was provided, make it default to the long name
+        if data.short_name is None:
+            data.short_name = data.long_name
+
+        # if no AttrType was provided, guess it from the DataType (applicable for UNIT and NUMERIC attribute types)
+        if data.attr_type is None:
+            data.attr_type = AttrType.from_data_type(data.data_type)
+            if data.attr_type == AttrType.INVALID:
+                raise TypeError('Invalid attribute type')
+
+        # in the case of a UNIT or NUMERIC attribute, make sure we have a default value
+        if data.attr_type in (AttrType.UNIT, AttrType.NUMERIC) and data.data_type not in (DataType.COLOR, DataType.FLOAT3):
+            if data.default_value is None:
+                data.default_value = 0.0
+
+        # Default values for STRING attribute must be an MObject, so we create one using MFnStringData
+        if data.attr_type == AttrType.STRING:
+            if data.default_value is None:
+                data.default_value = om.MObject.kNullObj
+            else:
+                string_data = om.MFnStringData()
+                data.default_value = string_data.create(data.default_value)
+
+        if data.attr_type == AttrType.ENUM:
+            ...
+        #ToDo: process the fields and values.
+        #   Do we want two different signature for enum_names ? like one standard string or one list of tuples like
+        #   [('red', 0), ('green', 1)] ?
+        #   might be a bit overkill and/or confusing... let's think about it
+
+        return data
