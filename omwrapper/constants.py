@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Union, Any, Tuple
+from typing import List, Union, Any, Tuple, Type
 
 from maya.api import OpenMaya as om
 
@@ -400,3 +400,19 @@ class AttrType(Enum):
             return cls.COMPOUND
         else:
             return cls.INVALID
+
+    @classmethod
+    def to_function_set(cls, constant:"AttrType") -> Type[om.MFnAttribute]:
+        fn = attr_type_to_function_set.get(constant)
+        if fn is None:
+            raise TypeError(f'No function set found for AttrType {constant.name}')
+        return fn
+
+attr_type_to_function_set = {AttrType.COMPOUND: om.MFnCompoundAttribute,
+                             AttrType.ENUM: om.MFnEnumAttribute,
+                             AttrType.GENERIC: om.MFnGenericAttribute,
+                             AttrType.MATRIX: om.MFnMatrixAttribute,
+                             AttrType.MESSAGE: om.MFnMessageAttribute,
+                             AttrType.STRING: om.MFnTypedAttribute,
+                             AttrType.NUMERIC: om.MFnNumericAttribute,
+                             AttrType.UNIT: om.MFnUnitAttribute}

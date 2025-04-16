@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
-from typing import Dict, List, Union, Any, Optional, Iterable
+from typing import Dict, List, Union, Any, Optional, Iterable, Tuple
 
 from maya.api import OpenMaya as om
 
@@ -16,7 +16,8 @@ from omwrapper.pytools import Iterator
 TInputs = Union[List[om.MPlug, "Attribute",...], om.MPlug, "Attribute", None]
 TOutputs = Union[List[TInputs], None]
 TConnect = Union["Attribute", str, om.MPlug]
-TDefaultValues = int, float, Iterable[int, float], str
+TDefaultValues = int, float, str, bool, List[int, float]
+TEnumField = List[Tuple[str, int]]
 
 def recycle_mplug(func):
     @wraps(func)
@@ -478,13 +479,13 @@ class AttrData:
             (e.g.: ('blue:green:red', 'one=1:twenty=20:hundred=100'))
         as_filename (Optional[bool]): Indicates whether the attribute should be treated as a filename. Defaults to False.
     """
-
+    # Creation
     long_name: str
     attr_type: Optional[AttrType] = None
     data_type: Optional[DataType] = None
     short_name: Optional[str] = None
     default_value: Optional[TDefaultValues] = None
-
+    # Post Process
     keyable: bool = False
     readable: bool = True
     min: Optional[TDefaultValues] = None
@@ -494,17 +495,66 @@ class AttrData:
     multi: Optional[bool] = False
     index_matters: Optional[bool] = False
     enum_names: Optional[str] = None
+    enum_fields: Optional[TEnumField] = None
     as_filename: Optional[bool] = False
+    # Internal
+    create_args: field(init=False, default_factory=list) = None
 
 class AttrFactory:
     def __new__(cls, data:AttrData) -> om.MFnAttribute:
+        # Process the data
         data = cls.process_data(data)
+
+        # CREATE
+        # Get the proper function set depending on the AttrType
+        mfn = AttrType.to_function_set(data.attr_type)()
+
+        # Call the create appropriate function. Special cases like COLOR and FLOAT3 have a different create function
+        if data.attr_type == AttrType.NUMERIC and data.data_type in (DataType.COLOR, DataType.FLOAT3):
+            if data.data_type == DataType.COLOR:
+                mfn.createColor(*data.create_args)
+            elif data.data_type == DataType.FLOAT3:
+                mfn.createPoint(*data.create_args)
+        else:
+            mfn.create(*data.create_args)
+
+        # POST PROCESS
+        # For the ENUM type we must add the fields one by one
+        # Then we set the default value, which can be an int or a string
+        if data.attr_type == AttrType.ENUM:
+            for name, value in data.enum_fields:
+                mfn.addField(name, value)
+            dv = data.default_value
+            if isinstance(dv, str):
+                mfn.setDefaultByName(dv)
+            else:
+                # if it's not a string, assume it's an int
+                mfn.default = dv
+
+        # For the UNIT and NUMERIC type, set the bounds and soft bounds if any were provided
+        if data.attr_type in (AttrType.UNIT, AttrType.NUMERIC):
+            if data.min is not None:
+                mfn.setMin(data.min)
+            if data.max is not None:
+                mfn.setMin(data.max)
+            if data.soft_min is not None:
+                mfn.setMin(data.soft_min)
+            if data.soft_max is not None:
+                mfn.setMin(data.soft_max)
+
+        # For the STRING type, apply the optional as_filename parameter
+        if data.attr_type == AttrType.STRING:
+            mfn.usedAsFilename = data.as_filename
+
+        return mfn
 
     @classmethod
     def process_data(cls, data:AttrData) -> AttrData:
         # If no short name was provided, make it default to the long name
         if data.short_name is None:
             data.short_name = data.long_name
+
+        data.create_args.append(data.long_name, data.short_name)
 
         # if no AttrType was provided, guess it from the DataType (applicable for UNIT and NUMERIC attribute types)
         if data.attr_type is None:
@@ -517,6 +567,9 @@ class AttrFactory:
             if data.default_value is None:
                 data.default_value = 0.0
 
+            data.create_args.append(DataType.to_api_type(data.data_type))
+            data.create_args.append(data.default_value)
+
         # Default values for STRING attribute must be an MObject, so we create one using MFnStringData
         if data.attr_type == AttrType.STRING:
             if data.default_value is None:
@@ -525,11 +578,153 @@ class AttrFactory:
                 string_data = om.MFnStringData()
                 data.default_value = string_data.create(data.default_value)
 
+            data.create_args.append(om.MFnData.kString)
+            data.create_args.append(data.default_value)
+
+        # If the AttrType is ENUM, we need to process the enum_names into enum_fields.
+        # Then, if no default value was provided, use the smallest int in the fields
         if data.attr_type == AttrType.ENUM:
-            ...
-        #ToDo: process the fields and values.
-        #   Do we want two different signature for enum_names ? like one standard string or one list of tuples like
-        #   [('red', 0), ('green', 1)] ?
-        #   might be a bit overkill and/or confusing... let's think about it
+            if data.enum_names is not None:
+                data.enum_fields = cls.enum_str_to_field(data.enum_names)
+            else:
+                if data.enum_fields is None:
+                    raise ValueError('If the AttrType is en ENUM, enum_names or enum_fields is required')
+
+            if data.default_value is None:
+                data.default_value = min(data.enum_fields, key=lambda x:x[1])[1]
 
         return data
+
+    @classmethod
+    def enum_str_to_field(cls, enum_names:str) -> TEnumField:
+        enum_field = []
+        for n, field in enumerate(enum_names.split(':')):
+            if '=' in field:
+                split = field.split('=')
+                name = split[0]
+                value = int(split[1])
+            else:
+                name = field
+                value = n
+
+            enum_field.append((name, value))
+
+        return enum_field
+
+class CompoundHandler:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super().__new__(cls)
+            cls._instance._registry = {}
+        return cls._instance
+
+    def __init__(self):
+        self.pending_compounds = {}
+
+    def add_compound(self, fn:om.MFnCompoundAttribute, children_count:int, node:om.MObject):
+        self.pending_compounds[fn] = (children_count, node)
+
+    def add_child(self, parent:om.MFnCompoundAttribute, child:om.MFnAttribute):
+        self.is_valid(parent)
+        parent.addChild(child)
+
+    def get_children_count(self, fn:om.MFnCompoundAttribute):
+        self.is_valid(fn)
+        return self.pending_compounds[fn][0]
+
+    def get_node(self, fn:om.MFnCompoundAttribute):
+        self.is_valid(fn)
+        return self.pending_compounds[fn][1]
+
+    def is_ready(self, fn:om.MFnCompoundAttribute):
+        self.is_valid(fn)
+        if fn.numChildren() >= self.get_children_count():
+            fn.addChild()
+            #ToDo: need a list of children to add somewhere
+
+    def is_valid(self, fn:om.MFnCompoundAttribute):
+        if fn not in self.pending_compounds:
+            raise ValueError(f'The provided function set is not managed by the CompoundHandler')
+
+
+class AttributeHandler:
+    def __init__(self, node:om.MObject, modifier:DGModifier):
+        self.compound_buffer = {}
+        self.added_compound = []
+        self.node_fn = om.MFnDependencyNode(node)
+        self.node_mobj = node
+        self.modifier = modifier
+
+    @add_modifier(DGModifier, undo=True)
+    def add_attribute(self, fn:om.MFnAttribute, children_count:int=None, parent:str=None, _modifier:DGModifier=None):
+        if parent is None:
+            if isinstance(fn, om.MFnCompoundAttribute):
+                self._buffer_compound(fn, children_count)
+            else:
+                self._do_add(fn, _modifier)
+        else:
+            if self.node_fn.hasAttribute(parent):
+                self._do_add(fn, _modifier)
+                plug = self.node_fn.findPlug(parent)
+                parent_fn = om.MFnCompoundAttribute(plug.attribute())
+                parent_fn.addChild(fn.object())
+            else:
+                parent_fn = self._find_pending_compound(parent)
+                parent_fn.addChild(fn)
+                self._eval_compound_buffer(parent_fn, _modifier)
+
+    def _find_pending_compound(self, name:str) -> om.MFnCompoundAttribute:
+        for fn in self.compound_buffer:
+            if fn.name == name:
+                return fn
+        else:
+            raise ValueError(f'Could not find an pending compound attribute named {name}')
+
+    def _buffer_compound(self, fn:om.MFnCompoundAttribute, children_count:int):
+        self.compound_buffer[fn] = children_count
+
+    def _is_ready(self, fn:om.MFnCompoundAttribute):
+        count = self.compound_buffer[fn][1]
+        if fn in self.added_compound:
+            return False
+        elif fn.numChildren() >= count:
+            return True
+        else:
+            return False
+
+    def _eval_compound_buffer(self, fn:Union[om.MFnCompoundAttribute, None], _modifier:DGModifier):
+        if fn is None:
+            checklist = self.compound_buffer.keys()
+        else:
+            checklist = [fn]
+
+        for fn in checklist:
+            if self._is_ready(fn):
+                self._do_add(fn, _modifier)
+
+    def _do_add(self, fn, _modifier:DGModifier):
+        _modifier.addAttribute(self.node_mobj, fn.object())
+        if fn in self.compound_buffer:
+            self.added_compound.append(fn)
+
+    def purge(self):
+        # Meant to be called with the doIt function
+        for k in self.added_compound:
+            self.compound_buffer.pop(k)
+        self.added_compound = []
+
+#ToDo: create a Context object that would handle the purging of the attribute handler
+
+class AttrContext:
+    def __init__(self, handler:AttributeHandler, modifier:DGModifier):
+        self.handler = handler
+        self.modifier = modifier
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.modifier.doIt()
+        self.handler.purge()
