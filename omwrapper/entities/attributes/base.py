@@ -611,44 +611,6 @@ class AttrFactory:
 
         return enum_field
 
-class CompoundHandler:
-    _instance = None
-
-    def __new__(cls, *args, **kwargs):
-        if not cls._instance:
-            cls._instance = super().__new__(cls)
-            cls._instance._registry = {}
-        return cls._instance
-
-    def __init__(self):
-        self.pending_compounds = {}
-
-    def add_compound(self, fn:om.MFnCompoundAttribute, children_count:int, node:om.MObject):
-        self.pending_compounds[fn] = (children_count, node)
-
-    def add_child(self, parent:om.MFnCompoundAttribute, child:om.MFnAttribute):
-        self.is_valid(parent)
-        parent.addChild(child)
-
-    def get_children_count(self, fn:om.MFnCompoundAttribute):
-        self.is_valid(fn)
-        return self.pending_compounds[fn][0]
-
-    def get_node(self, fn:om.MFnCompoundAttribute):
-        self.is_valid(fn)
-        return self.pending_compounds[fn][1]
-
-    def is_ready(self, fn:om.MFnCompoundAttribute):
-        self.is_valid(fn)
-        if fn.numChildren() >= self.get_children_count():
-            fn.addChild()
-            #ToDo: need a list of children to add somewhere
-
-    def is_valid(self, fn:om.MFnCompoundAttribute):
-        if fn not in self.pending_compounds:
-            raise ValueError(f'The provided function set is not managed by the CompoundHandler')
-
-
 class AttributeHandler:
     def __init__(self, node:om.MObject, modifier:DGModifier):
         self.compound_buffer = {}
@@ -714,8 +676,6 @@ class AttributeHandler:
         for k in self.added_compound:
             self.compound_buffer.pop(k)
         self.added_compound = []
-
-#ToDo: create a Context object that would handle the purging of the attribute handler
 
 class AttrContext:
     def __init__(self, handler:AttributeHandler, modifier:DGModifier):
