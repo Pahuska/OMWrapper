@@ -83,6 +83,7 @@ class DependNode(MayaObject):
 
     def add_attr(self, data:AttrData, _modifier:DGModifier=None):
         fn = AttrFactory(data)
+        print(f'CHANNEL BOX : {fn.channelBox}')
         self._attribute_handler.add_attribute(fn=fn, children_count=data.children_count,
                                               parent=data.parent, _modifier=_modifier)
 

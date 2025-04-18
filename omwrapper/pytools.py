@@ -1,4 +1,8 @@
+import time
+from collections import OrderedDict
+from functools import wraps
 from typing import List, Any
+
 
 class Iterator:
     """
@@ -122,3 +126,60 @@ class Signal:
         """Emit the signal to all connected listeners."""
         for listener in self.listeners:
             listener(*args, **kwargs)
+
+def timeit(name:str='timer', log:bool=False, verbose:bool=True):
+    def wrapper(func):
+        @wraps(func)
+        def timed(*args, **kwargs):
+            with Timer(name=name, log=log, verbose=verbose):
+                result = func(*args, **kwargs)
+            return result
+        return timed
+    return wrapper
+
+
+class Timer:
+    result_dic = OrderedDict()
+
+    def __init__(self, name:str='timer', log:bool=False, verbose:bool=True):
+        self.start = None
+        self.end = None
+        self.verbose = verbose
+        self.name = name
+        self.log = log
+        self.interval = None
+
+    def __enter__(self):
+        self.start = time.time()
+        return self
+
+    def time_it(self):
+        self.end = time.time()
+        self.interval = self.end - self.start
+
+        if self.log is not None:
+            if self.name not in self.result_dic:
+                self.result_dic[self.name] = 0.0
+            self.result_dic[self.name] += self.interval
+
+        if self.verbose:
+            print(self.name, ':', self.interval)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.time_it()
+
+    @classmethod
+    def print_dic(cls, clear=False):
+        for k, v in cls.result_dic.items():
+            print('{} : {}'.format(k, v))
+        if clear:
+            cls.clear_dic()
+
+    @classmethod
+    def clear_dic(cls, **kwargs):
+        if len(kwargs):
+            for k, v in kwargs.items():
+                if k in cls.result_dic and v:
+                    del cls.result_dic[k]
+        else:
+            cls.result_dic = OrderedDict()

@@ -13,10 +13,10 @@ from omwrapper.constants import DataType, AttrType
 from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
 from omwrapper.pytools import Iterator, Signal
 
-TInputs = Union[List[om.MPlug, "Attribute",...], om.MPlug, "Attribute", None]
+TInputs = Union[List[Union[om.MPlug, "Attribute"]], om.MPlug, "Attribute", None]
 TOutputs = Union[List[TInputs], None]
 TConnect = Union["Attribute", str, om.MPlug]
-TDefaultValues = int, float, str, bool, List[int, float]
+TDefaultValues = Union[int, float, str, bool, List[Union[int, float]]]
 TEnumField = List[Tuple[str, int]]
 
 def recycle_mplug(func):
@@ -479,6 +479,7 @@ class AttrData:
             (e.g.: ('blue:green:red', 'one=1:twenty=20:hundred=100'))
         as_filename (Optional[bool]): Indicates whether the attribute should be treated as a filename. Defaults to False.
     """
+
     # Creation
     long_name: str
     attr_type: Optional[AttrType] = None
@@ -499,18 +500,21 @@ class AttrData:
     as_filename: Optional[bool] = False
     children_count:int = None
     parent:Union["AttrData", str, None]=None
+
     # Internal
     create_args: field(init=False, default_factory=list) = None
+
 
     def __post_init__(self):
         self._process_data()
 
     def _process_data(self):
+        self.create_args = []
         # If no short name was provided, make it default to the long name
         if self.short_name is None:
             self.short_name = self.long_name
 
-        self.create_args.append(self.long_name, self.short_name)
+        self.create_args.extend((self.long_name, self.short_name))
 
         # if no AttrType was provided, guess it from the DataType (applicable for UNIT and NUMERIC attribute types)
         if self.attr_type is None:
@@ -622,15 +626,21 @@ class AttrFactory:
             if data.min is not None:
                 mfn.setMin(data.min)
             if data.max is not None:
-                mfn.setMin(data.max)
+                mfn.setMax(data.max)
             if data.soft_min is not None:
-                mfn.setMin(data.soft_min)
+                mfn.setSoftMin(data.soft_min)
             if data.soft_max is not None:
-                mfn.setMin(data.soft_max)
+                mfn.setSoftMax(data.soft_max)
 
         # For the STRING type, apply the optional as_filename parameter
         if data.attr_type == AttrType.STRING:
             mfn.usedAsFilename = data.as_filename
+
+        mfn.array = data.multi
+        if data.multi:
+            mfn.indexMatters = data.index_matters
+        mfn.keyable = data.keyable
+        mfn.readable = data.readable
 
         return mfn
 
@@ -701,7 +711,7 @@ class AttributeHandler:
                 parent_fn.addChild(fn.object())
             else:
                 parent_fn = self._find_pending_compound(parent)
-                parent_fn.addChild(fn)
+                parent_fn.addChild(fn.object())
                 self._eval_compound_buffer(parent_fn, _modifier)
 
     def _find_pending_compound(self, name:str) -> om.MFnCompoundAttribute:
@@ -743,7 +753,7 @@ class AttributeHandler:
             bool: True if it has enough children, False otherwise
 
         """
-        count = self.compound_buffer[fn][1]
+        count = self.compound_buffer[fn]
         if fn in self.added_compound:
             return False
         elif fn.numChildren() >= count:
