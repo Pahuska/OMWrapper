@@ -25,7 +25,7 @@ def recycle_mplug(func):
         inst = args[0]
         mfn = kwargs.get('mplug', None)
         if mfn is None:
-            kwargs['mplug'] = inst.apim_plug()
+            kwargs['mplug'] = inst.api_mplug()
         result = func(*args, **kwargs)
         return result
     return wrapped
@@ -51,9 +51,9 @@ class Attribute(MayaObject):
     _mfn_constant = om.MFn.kAttribute
 
     def __init__(self, **kwargs:TMayaObjectApi):
+        self._node = kwargs.pop('node', None)
+        self._parent = kwargs.pop('parent', None)
         super().__init__(**kwargs)
-        self._node = kwargs.get('node', None)
-        self._parent = kwargs.get('parent', None)
         self._data_type = None
         self._attr_type = None
 
@@ -807,7 +807,6 @@ class AttributeHandler:
         """
         self.add_attribute = add_modifier(DGModifier, undo=True, post_call=self.purge)(self.add_attribute)
 
-# ToDo: remove the context ?
 class AttrContext:
     def __init__(self, handler:AttributeHandler, modifier:DGModifier, undo:bool=True):
         self.handler = handler

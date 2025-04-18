@@ -20,6 +20,7 @@ from omwrapper.general import pyObject
 
 cmds.file(new=True, force=True)
 
+# Creating the AttrData objects
 ikfk = AttrData('ikfk', data_type=DataType.BOOL, default_value=True, keyable=True)
 compound = AttrData('attr_group', attr_type=AttrType.COMPOUND, children_count=3)
 float_a = AttrData('float_a', data_type=DataType.FLOAT, min=-10, max=10, default_value=1.0, parent=compound,
@@ -27,7 +28,6 @@ float_a = AttrData('float_a', data_type=DataType.FLOAT, min=-10, max=10, default
 enum_b = AttrData('enum_b', attr_type=AttrType.ENUM, enum_names='yellow=0:red=10:blue=100', parent='attr_group',
                   keyable=True)
 string_c = AttrData('string_c', attr_type=AttrType.STRING, default_value='coucou', parent=compound, keyable=True)
-
 
 node = cmds.polySphere()[0]
 py_node = pyObject(node)
@@ -44,3 +44,5 @@ mod = DGModifier()
 with AttrContext(py_node.attr_handler(), mod, undo=True):
     for at in attributes:
         py_node.add_attr(at, _modifier=mod)
+
+attribute = pyObject('persp.translateX')

@@ -132,11 +132,13 @@ class PyObject:
             else:
                 # CASE 4C : none of the above were provided
                 mobj = kwargs.pop('MObject', None)
-                if mobj is not None:
-                    if 'MDagPath' not in kwargs and mobj.hasFn(om.MFn.kDagNode):
-                        kwargs['MDagPath'] = om.MDagPath.getAPathTo(mobj)
-                else:
+                if mobj is None:
                     mobj = kwargs['MDagPath'].node()
+                else:
+                    raise ValueError(f'Not enough data to build a PyObject : {kwargs}')
+
+            if 'MDagPath' not in kwargs and mobj.hasFn(om.MFn.kDagNode):
+                kwargs['MDagPath'] = om.MDagPath.getAPathTo(mobj)
 
             if 'MObjectHandle' not in kwargs:
                 kwargs['MObjectHandle'] = om.MObjectHandle(mobj)

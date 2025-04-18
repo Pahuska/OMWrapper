@@ -4,6 +4,7 @@ from typing import Union, Dict, Callable
 
 from maya.api import OpenMaya as om
 
+from omwrapper.api.utilities import unique_object_exists
 from omwrapper.entities.factory import PyObject
 
 TMayaObjectApi = Union[om.MObject, om.MObjectHandle, om.MPlug, om.MDagPath]
@@ -19,6 +20,22 @@ class MayaObject(ABC):
     @abstractmethod
     def __init__(self, **kwargs: TMayaObjectApi):
         self._api_input = kwargs
+
+    def __repr__(self):
+        return '{} <{}>'.format(self.name(), self.__class__.__name__)
+
+    def __str__(self):
+        name = self.name()
+        if unique_object_exists(name):
+            return self.name()
+        else:
+            return self.name(full_dag_path=True)
+
+    def __eq__(self, other):
+        if isinstance(other, PyObject):
+            return self.api_mobject() == other.api_mobject()
+        else:
+            return NotImplemented
 
     @abstractmethod
     def api_mfn(self) -> om.MFnBase:

@@ -19,6 +19,11 @@ class DependNode(MayaObject):
         super().__init__(**kwargs)
         self._attribute_handler = AttributeHandler(self.api_mobject())
 
+    def __getattr__(self, item):
+        print(f'getting attribute {item}')
+        attr = self.attr(item)
+        setattr(self, item, attr)
+
     def api_mfn(self) -> om.MFnDependencyNode:
         return self._mfn_class(self.api_mobject())
 
@@ -82,13 +87,79 @@ class DependNode(MayaObject):
         return mfn.hasAttribute(name)
 
     def add_attr(self, data:AttrData, _modifier:DGModifier=None):
+        """
+        Adds a new attribute to this node, based on the provided AttrData. Search AttrData's doc for more information.
+        An optional _modifier can be passed. In that case it is up to the user to trigger the doIt function, and then
+        purge this node's AttributeHandler buffer. This can also be done with an AttrContext. Check examples below
+
+        Args:
+            data (AttrData): the data needed to create the attribute
+            _modifier: an optional DGModifier or similar
+
+        Returns:
+            None
+
+        Examples:
+            # Create the AttrData objects
+            ikfk = AttrData('ikfk', data_type=DataType.BOOL, default_value=True, keyable=True)
+            compound = AttrData('attr_group', attr_type=AttrType.COMPOUND, children_count=3)
+            float_a = AttrData('float_a', data_type=DataType.FLOAT, min=-10, max=10, default_value=1.0, parent=compound,
+                               keyable=True)
+            enum_b = AttrData('enum_b', attr_type=AttrType.ENUM, enum_names='yellow=0:red=10:blue=100', parent='attr_group',
+                              keyable=True)
+            string_c = AttrData('string_c', attr_type=AttrType.STRING, default_value='coucou', parent=compound, keyable=True)
+
+            py_node = pyObject(cmds.polySphere()[0]) # type: DependNode
+            attributes = [ikfk, compound, float_a, enum_b,string_c]
+
+            # Create the attributes using the simple method
+            for at in attributes:
+                py_node.add_attr(at)
+
+            # Create the attributes with an AttrContext
+            py_node = pyObject(cmds.polySphere()[0]) # type: DependNode
+            mod = DGModifier()
+            with AttrContext(py_node.attr_handler(), mod, undo=True):
+                for at in attributes:
+                    py_node.add_attr(at, _modifier=mod)
+
+            # Create the attribute and purging manually
+            py_node = pyObject(cmds.polySphere()[0]) # type: DependNode
+            mod = DGModifier()
+            for at in attributes:
+                py_node.add_attr(at, _modifier=mod)
+            mod.doIt()  # Executing the modifier
+            node.attribute_handler().purge()    # Purging the buffer of the attribute_handler
+            apiundo.commit(undo=mod.undoIt, redo=mod.doIt)  # Adding this operation to the undo queue (optional)
+        """
         fn = AttrFactory(data)
-        print(f'CHANNEL BOX : {fn.channelBox}')
+
+        # Make sure the name of the attribute is not already in use on this node
+        names = (data.long_name, data.short_name)
+        for n in names:
+            if self.has_attr(n):
+                raise NameError(f'there is already an attribute named {n}')
+
         self._attribute_handler.add_attribute(fn=fn, children_count=data.children_count,
                                               parent=data.parent, _modifier=_modifier)
 
     def attr_handler(self) -> AttributeHandler:
+        """
+        Get the AttributeHandler that manages the addition of attributes for this node
+        Returns:
+            AttributeHandler: the AttributeHandler of this node
+
+        """
         return self._attribute_handler
+
+    def attr(self, name):
+        if self.has_attr(name):
+            mfn = om.MFnDependencyNode(self.api_mobject())
+            plug = mfn.findPlug(name, False)
+            attr = self._factory(MPlug=plug, MObjectHandle=om.MObjectHandle(plug.attribute()), node=self)
+            return attr
+        else:
+            raise AttributeError(f'{self.name()} has no attribute named {name}')
 
     @recycle_mfn
     def is_locked(self, mfn:om.MFnDependencyNode) -> bool:
