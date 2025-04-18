@@ -32,7 +32,7 @@ class MayaObject(ABC):
             return self.name(full_dag_path=True)
 
     def __eq__(self, other):
-        if isinstance(other, PyObject):
+        if isinstance(other, MayaObject):
             return self.api_mobject() == other.api_mobject()
         else:
             return NotImplemented
