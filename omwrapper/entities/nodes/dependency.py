@@ -6,6 +6,7 @@ from omwrapper.api.modifiers.base import TModifier, add_modifier
 from omwrapper.api.modifiers.custom import ProxyModifier
 from omwrapper.api.modifiers.maya import DGModifier
 from omwrapper.api.utilities import name_to_api
+from omwrapper.entities.attributes.base import AttributeHandler, AttrData, AttrFactory
 from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
 from omwrapper.api import apiundo
 
@@ -16,6 +17,7 @@ class DependNode(MayaObject):
 
     def __init__(self, **kwargs: TMayaObjectApi):
         super().__init__(**kwargs)
+        self._attribute_handler = AttributeHandler(self.api_mobject())
 
     def api_mfn(self) -> om.MFnDependencyNode:
         return self._mfn_class(self.api_mobject())
@@ -78,6 +80,14 @@ class DependNode(MayaObject):
         """
         mfn = om.MFnDependencyNode(self.api_mobject())
         return mfn.hasAttribute(name)
+
+    def add_attr(self, data:AttrData, _modifier:DGModifier=None):
+        fn = AttrFactory(data)
+        self._attribute_handler.add_attribute(fn=fn, children_count=data.children_count,
+                                              parent=data.parent, _modifier=_modifier)
+
+    def attr_handler(self) -> AttributeHandler:
+        return self._attribute_handler
 
     @recycle_mfn
     def is_locked(self, mfn:om.MFnDependencyNode) -> bool:

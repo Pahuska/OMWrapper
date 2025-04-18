@@ -11,7 +11,7 @@ from omwrapper.api.modifiers.maya import DGModifier, DagModifier
 from omwrapper.api.utilities import get_plug_value, set_plug_value, name_to_api
 from omwrapper.constants import DataType, AttrType
 from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
-from omwrapper.pytools import Iterator
+from omwrapper.pytools import Iterator, Signal
 
 TInputs = Union[List[om.MPlug, "Attribute",...], om.MPlug, "Attribute", None]
 TOutputs = Union[List[TInputs], None]
@@ -497,13 +497,99 @@ class AttrData:
     enum_names: Optional[str] = None
     enum_fields: Optional[TEnumField] = None
     as_filename: Optional[bool] = False
+    children_count:int = None
+    parent:Union["AttrData", str, None]=None
     # Internal
     create_args: field(init=False, default_factory=list) = None
 
+    def __post_init__(self):
+        self._process_data()
+
+    def _process_data(self):
+        # If no short name was provided, make it default to the long name
+        if self.short_name is None:
+            self.short_name = self.long_name
+
+        self.create_args.append(self.long_name, self.short_name)
+
+        # if no AttrType was provided, guess it from the DataType (applicable for UNIT and NUMERIC attribute types)
+        if self.attr_type is None:
+            self.attr_type = AttrType.from_data_type(self.data_type)
+            if self.attr_type == AttrType.INVALID:
+                raise TypeError('Invalid attribute type')
+
+        # in the case of a UNIT or NUMERIC attribute, make sure we have a default value
+        if self.attr_type in (AttrType.UNIT, AttrType.NUMERIC) and self.data_type not in (
+        DataType.COLOR, DataType.FLOAT3):
+            if self.default_value is None:
+                self.default_value = 0.0
+
+            self.create_args.append(DataType.to_api_type(self.data_type))
+            self.create_args.append(self.default_value)
+
+        # Default values for STRING attribute must be an MObject, so we create one using MFnStringData
+        if self.attr_type == AttrType.STRING:
+            if self.default_value is None:
+                self.default_value = om.MObject.kNullObj
+            else:
+                string_data = om.MFnStringData()
+                self.default_value = string_data.create(self.default_value)
+
+            self.create_args.append(om.MFnData.kString)
+            self.create_args.append(self.default_value)
+
+        # If the AttrType is ENUM, we need to process the enum_names into enum_fields.
+        # Then, if no default value was provided, use the smallest int in the fields
+        if self.attr_type == AttrType.ENUM:
+            if self.enum_names is not None:
+                self.enum_fields = AttrData.enum_str_to_field(self.enum_names)
+            else:
+                if self.enum_fields is None:
+                    raise ValueError('If the AttrType is en ENUM, enum_names or enum_fields is required')
+
+            if self.default_value is None:
+                self.default_value = min(self.enum_fields, key=lambda x: x[1])[1]
+
+        if self.attr_type == AttrType.COMPOUND:
+            if not self.children_count:
+                raise ValueError(f'Compound attributes require a children count > 0')
+
+        if isinstance(self.parent, AttrData):
+            self.parent = self.parent.long_name
+
+    @staticmethod
+    def enum_str_to_field(enum_names: str) -> TEnumField:
+        enum_fields = []
+        for n, enum_field in enumerate(enum_names.split(':')):
+            if '=' in enum_field:
+                split = enum_field.split('=')
+                name = split[0]
+                value = int(split[1])
+            else:
+                name = enum_field
+                value = n
+
+            enum_fields.append((name, value))
+
+        return enum_fields
+
 class AttrFactory:
     def __new__(cls, data:AttrData) -> om.MFnAttribute:
-        # Process the data
-        data = cls.process_data(data)
+        """
+        Factory class responsible for creating the appropriate function set (MFnAttribute and subclasses) from the data
+        that were provided.
+
+        We first find the right function set.
+        The next step is to call the create function to actually create the attribute. Different types of attribute will
+        have different way to call the create function.
+        Finally, we do some post-processing, like adding fields to ENUM attributes, setting the min and max, etc...
+
+        Args:
+            data (AttrData): the data to build the MFn from
+
+        Returns:
+            MFnAttribute: the new MFnAttribute instance, created and ready to be added to a node
+        """
 
         # CREATE
         # Get the proper function set depending on the AttrType
@@ -548,79 +634,60 @@ class AttrFactory:
 
         return mfn
 
-    @classmethod
-    def process_data(cls, data:AttrData) -> AttrData:
-        # If no short name was provided, make it default to the long name
-        if data.short_name is None:
-            data.short_name = data.long_name
-
-        data.create_args.append(data.long_name, data.short_name)
-
-        # if no AttrType was provided, guess it from the DataType (applicable for UNIT and NUMERIC attribute types)
-        if data.attr_type is None:
-            data.attr_type = AttrType.from_data_type(data.data_type)
-            if data.attr_type == AttrType.INVALID:
-                raise TypeError('Invalid attribute type')
-
-        # in the case of a UNIT or NUMERIC attribute, make sure we have a default value
-        if data.attr_type in (AttrType.UNIT, AttrType.NUMERIC) and data.data_type not in (DataType.COLOR, DataType.FLOAT3):
-            if data.default_value is None:
-                data.default_value = 0.0
-
-            data.create_args.append(DataType.to_api_type(data.data_type))
-            data.create_args.append(data.default_value)
-
-        # Default values for STRING attribute must be an MObject, so we create one using MFnStringData
-        if data.attr_type == AttrType.STRING:
-            if data.default_value is None:
-                data.default_value = om.MObject.kNullObj
-            else:
-                string_data = om.MFnStringData()
-                data.default_value = string_data.create(data.default_value)
-
-            data.create_args.append(om.MFnData.kString)
-            data.create_args.append(data.default_value)
-
-        # If the AttrType is ENUM, we need to process the enum_names into enum_fields.
-        # Then, if no default value was provided, use the smallest int in the fields
-        if data.attr_type == AttrType.ENUM:
-            if data.enum_names is not None:
-                data.enum_fields = cls.enum_str_to_field(data.enum_names)
-            else:
-                if data.enum_fields is None:
-                    raise ValueError('If the AttrType is en ENUM, enum_names or enum_fields is required')
-
-            if data.default_value is None:
-                data.default_value = min(data.enum_fields, key=lambda x:x[1])[1]
-
-        return data
-
-    @classmethod
-    def enum_str_to_field(cls, enum_names:str) -> TEnumField:
-        enum_field = []
-        for n, field in enumerate(enum_names.split(':')):
-            if '=' in field:
-                split = field.split('=')
-                name = split[0]
-                value = int(split[1])
-            else:
-                name = field
-                value = n
-
-            enum_field.append((name, value))
-
-        return enum_field
-
 class AttributeHandler:
-    def __init__(self, node:om.MObject, modifier:DGModifier):
+    def __init__(self, node:om.MObject):
+        """
+        Manages the addition of attributes to a specific node using a DGModifier (or similar). It includes a
+        buffer for compound attributes, as they cannot be added to a node if they are empty.
+
+        When a compound attribute is added, it must include a specified children count. Instead of being
+        added to the node immediately, the compound attribute is stored in the buffer. As additional attributes
+        are added, they can be assigned as children of the pending compound. Once the number of children matches
+        the specified count, the compound attribute is added to the node and marked as complete.
+
+        The 'purge' function must be called in conjunction with the 'doIt' function of the modifier. This is done
+        automatically if no _modifier is provided in the add_attribute function.
+
+        Args:
+            node (MObject): an MObject representing the node to which the attributes will be added
+        """
         self.compound_buffer = {}
         self.added_compound = []
         self.node_fn = om.MFnDependencyNode(node)
         self.node_mobj = node
-        self.modifier = modifier
 
-    @add_modifier(DGModifier, undo=True)
+        self._setup_decorator()
+
+    # @add_modifier Dynamically added with _setup_decorator
     def add_attribute(self, fn:om.MFnAttribute, children_count:int=None, parent:str=None, _modifier:DGModifier=None):
+        """
+        Adds an attribute to a specific node, managing the complexities of compound attributes
+        and their children.
+
+        This method handles both regular attributes and compound attributes. Compound attributes are
+        buffered until the required number of children is added. Once the children count matches the
+        specified value, the compound attribute is added to the node and marked as complete.
+
+        Parameters:
+            fn (MFnAttribute): The attribute function set object to be added.
+            children_count (int, optional): The number of child attributes required for a compound
+                attribute. Defaults to None.
+            parent (str, optional): The name of the parent compound attribute, if the attribute being
+                added is part of a compound. Defaults to None.
+            _modifier (DGModifier, optional): The modifier object used to add the attribute to the node.
+                Defaults to None. If the value is None, a default modifier will be used and the doIt function executed.
+                Otherwise, executing the doIt function is the user's responsibility, alongside with the purge function
+
+        Notes:
+            - This method is dynamically decorated by `add_modifier` in order to provide a default modifier if none was
+              given, and execute the doIt function afterward.
+            - When compound attributes are added, they are initially stored in a buffer to ensure they
+              include the specified number of children.
+
+        Important:
+            If a custom modifier is provided by the user, the 'purge' function must be invoked alongside the 'doIt'
+            method of the DGModifier to ensure proper finalization of pending operations.
+        """
         if parent is None:
             if isinstance(fn, om.MFnCompoundAttribute):
                 self._buffer_compound(fn, children_count)
@@ -638,6 +705,18 @@ class AttributeHandler:
                 self._eval_compound_buffer(parent_fn, _modifier)
 
     def _find_pending_compound(self, name:str) -> om.MFnCompoundAttribute:
+        """
+        Searches for a pending compound attribute with the given name in the buffer
+        Args:
+            name (str): the name of the attribute to look for
+
+        Returns:
+            MFnCompoundAttribute: the attribute in the buffer matching the given name
+
+        Raises:
+            ValueError : no attribute with the given name was found
+
+        """
         for fn in self.compound_buffer:
             if fn.name == name:
                 return fn
@@ -645,9 +724,25 @@ class AttributeHandler:
             raise ValueError(f'Could not find an pending compound attribute named {name}')
 
     def _buffer_compound(self, fn:om.MFnCompoundAttribute, children_count:int):
+        """
+        Add the given compound attribute to the buffer, along with his expected children count
+        Args:
+            fn (MFnCompoundAttribute): the attribute to add to the buffer
+            children_count (int): the amount of children the attribute should have to be added to the node
+        """
         self.compound_buffer[fn] = children_count
 
-    def _is_ready(self, fn:om.MFnCompoundAttribute):
+    def _is_ready(self, fn:om.MFnCompoundAttribute) -> bool:
+        """
+        Verifies if the given attribute is ready to be added
+
+        Args:
+            fn (MFnCompoundAttribute): the attribute to check
+
+        Returns:
+            bool: True if it has enough children, False otherwise
+
+        """
         count = self.compound_buffer[fn][1]
         if fn in self.added_compound:
             return False
@@ -656,7 +751,14 @@ class AttributeHandler:
         else:
             return False
 
-    def _eval_compound_buffer(self, fn:Union[om.MFnCompoundAttribute, None], _modifier:DGModifier):
+    def _eval_compound_buffer(self, fn:Union[om.MFnCompoundAttribute, None]=None, _modifier:DGModifier=None):
+        """
+        Adds the pending compound attribute to the node if it is ready. if the attribute is None, check the whole buffer
+
+        Args:
+            fn (MFnCompoundAttribute, None): the attribute to check. Checks the whole buffer if the value is None
+            _modifier (DGModifier): the modifier used to add the attribute to the node
+        """
         if fn is None:
             checklist = self.compound_buffer.keys()
         else:
@@ -667,24 +769,46 @@ class AttributeHandler:
                 self._do_add(fn, _modifier)
 
     def _do_add(self, fn, _modifier:DGModifier):
+        """
+        Adds the given attribute to the node
+
+        Args:
+            fn (MFnCompoundAttribute): the attribute to add
+            _modifier (DGModifier): the modifier used to add the attribute to the node
+        """
         _modifier.addAttribute(self.node_mobj, fn.object())
         if fn in self.compound_buffer:
             self.added_compound.append(fn)
 
     def purge(self):
+        """
+        Removes the attributes that have been added to the node from the buffer. This function must be called once the
+        modifier's doIt function has been called
+        """
         # Meant to be called with the doIt function
         for k in self.added_compound:
             self.compound_buffer.pop(k)
         self.added_compound = []
 
+    def _setup_decorator(self):
+        """
+        Dynamic decoration of add_attribute with the add_modifier decorator in order to call purge alongside with the
+        doIt call of the modifier
+        """
+        self.add_attribute = add_modifier(DGModifier, undo=True, post_call=self.purge)(self.add_attribute)
+
+# ToDo: remove the context ?
 class AttrContext:
-    def __init__(self, handler:AttributeHandler, modifier:DGModifier):
+    def __init__(self, handler:AttributeHandler, modifier:DGModifier, undo:bool=True):
         self.handler = handler
         self.modifier = modifier
+        self.undo = undo
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.modifier.doIt()
+        if self.undo:
+            apiundo.commit(undo=self.modifier.undoIt, redo=self.modifier.doIt)
         self.handler.purge()

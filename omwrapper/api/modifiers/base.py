@@ -25,7 +25,7 @@ class AbstractModifier(ABC):
 
 TModifier = Union[om.MDGModifier, om.MDagModifier, AbstractModifier]
 
-def add_modifier(_modifier:Type[TModifier], undo:bool=True) -> Callable:
+def add_modifier(_modifier:Type[TModifier], undo:bool=True, post_call:Callable=None) -> Callable:
     """
     A decorator to apply a specific type of modifier to compatible functions
     Args:
@@ -49,6 +49,8 @@ def add_modifier(_modifier:Type[TModifier], undo:bool=True) -> Callable:
                 # If undo is True, then pass the newly created modifier into the apiundo.commit function
                 if undo:
                     apiundo.commit(modifier.undoIt, modifier.doIt)
+                if post_call:
+                    post_call()
                 return result
             # Else, just execute the function
             else:

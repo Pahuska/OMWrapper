@@ -108,3 +108,17 @@ class Iterator:
             int: The current index in the collection.
         """
         return self.n
+
+
+class Signal:
+    def __init__(self):
+        self.listeners = []
+
+    def connect(self, callback):
+        """Connect a listener to the signal."""
+        self.listeners.append(callback)
+
+    def emit(self, *args, **kwargs):
+        """Emit the signal to all connected listeners."""
+        for listener in self.listeners:
+            listener(*args, **kwargs)
