@@ -1,7 +1,5 @@
 import sys
 
-from omwrapper.pytools import Timer
-
 src_root = r'G:\DOCUMENTS\JOB\@PERSO\Tools\OMWrapper'
 if src_root not in sys.path:
     sys.path.insert(0, src_root)
@@ -15,6 +13,7 @@ from omwrapper.api.modifiers.maya import DGModifier
 from omwrapper.constants import AttrType, DataType
 from omwrapper.entities.attributes.base import AttrData, AttrContext
 from omwrapper.entities.nodes.dependency import DependNode
+from omwrapper.pytools import Timer
 
 from omwrapper.general import pyObject
 

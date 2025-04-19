@@ -1,4 +1,6 @@
-from typing import Dict
+from __future__ import annotations
+
+from typing import Dict, TYPE_CHECKING, Union
 
 from maya.api import OpenMaya as om
 
@@ -10,6 +12,8 @@ from omwrapper.entities.attributes.base import AttributeHandler, AttrData, AttrF
 from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
 from omwrapper.api import apiundo
 
+if TYPE_CHECKING:
+    from omwrapper.entities.attributes.base import Attribute
 
 class DependNode(MayaObject):
     _mfn_class = om.MFnDependencyNode
@@ -33,11 +37,11 @@ class DependNode(MayaObject):
 
     @classmethod
     def get_build_data_from_name(cls, name:str) -> Dict[str, TMayaObjectApi]:
-        mobj = name_to_api(name)
-        if not isinstance(mobj, om.MObject):
-            raise TypeError(f'{name} is not a Dependency Node')
+        dag = name_to_api(name)
+        if not isinstance(dag, om.MDagPath):
+            raise TypeError(f'{name} is not a DAG Node')
 
-        return {'MObjectHandle': om.MObjectHandle(mobj)}
+        return {'MDagPath':dag, 'MObjectHandle': om.MObjectHandle(dag.node())}
 
     @recycle_mfn
     def rename_(self, name:str, mfn:om.MFnDependencyNode) -> str:
@@ -152,7 +156,7 @@ class DependNode(MayaObject):
         """
         return self._attribute_handler
 
-    def attr(self, name):
+    def attr(self, name) -> Attribute:
         if self.has_attr(name):
             mfn = om.MFnDependencyNode(self.api_mobject())
             plug = mfn.findPlug(name, False)
@@ -188,3 +192,37 @@ class DependNode(MayaObject):
         apiundo.commit(undo=modifier.undoIt, redo=modifier.doIt)
 
         return modifier
+
+    @classmethod
+    def _create(cls, node_type:Union[str, int], name:str=None) -> "DependNode":
+        """
+        NOT UNDOABLE
+        Create a new Dependency node of the given type. If no name is specified, it will be based on the node_type
+        Args:
+            node_type (str, MFn.TypeId): either a string of an MFn.TypeId constant representing the desired node type
+            name (str, optional): the name of the newly created node
+
+        Returns:
+            DependNode: the created node
+        """
+        mfn = cls._mfn_class()
+        obj = mfn.create(node_type, name)
+        return cls._factory(MObject=obj)
+
+    @classmethod
+    def create(cls, node_type:Union[str, int], name:str=None) -> "DependNode":
+        """
+        UNDOABLE
+        Create a new Dependency node of the given type. If no name is specified, it will be based on the node_type
+        Args:
+            node_type (str, MFn.TypeId): either a string of an MFn.TypeId constant representing the desired node type
+            name (str, optional): the name of the newly created node
+
+        Returns:
+            DependNode: the created node
+        """
+        mod = DGModifier()
+        obj = mod.create_node(node_type=node_type, name=name)
+        mod.doIt()
+        apiundo.commit(undo=mod.undoIt, redo=mod.doIt)
+        return cls._factory(MObject=obj)

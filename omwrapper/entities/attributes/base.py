@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Dict, List, Union, Any, Optional, Iterable, Tuple
+from typing import Dict, List, Union, Any, Optional, Iterable, Tuple, TYPE_CHECKING
 
 from maya.api import OpenMaya as om
 
@@ -12,6 +14,9 @@ from omwrapper.api.utilities import get_plug_value, set_plug_value, name_to_api
 from omwrapper.constants import DataType, AttrType
 from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
 from omwrapper.pytools import Iterator, Signal
+
+if TYPE_CHECKING:
+    from omwrapper.entities.nodes.dependency import DependNode
 
 TInputs = Union[List[Union[om.MPlug, "Attribute"]], om.MPlug, "Attribute", None]
 TOutputs = Union[List[TInputs], None]
@@ -81,21 +86,52 @@ class Attribute(MayaObject):
         return {'MObjectHandle':om.MObjectHandle(mplug.attribute()), 'MPlug':mplug}
 
     # IDENTITY
-    def name(self, include_node=True, alias=False, full_attr_path=False, long_names=True) -> str:
-        plug_name = self.api_mplug().partialName(includeNodeName=include_node, useAlias=alias,
+    @recycle_mplug
+    def name(self, include_node=True, alias=False, full_attr_path=False, long_names=True, mplug:om.MPlug=None) -> str:
+        """
+        Generates the name of the attribute.
+        The output can include the node name, use aliases, provide the full attribute path,
+        and use long names depending on the parameters provided.
+
+        Parameters:
+            include_node (bool, optional): If True, includes the node name. Defaults to True
+            alias (bool, optional): If True, uses the alias of the attribute (if one exists)
+                instead of its actual name. Defaults to False.
+            full_attr_path (bool, optional): If True, includes the full attribute path in the
+                attribute name. Defaults to False.
+            long_names (bool, optional): If True, uses the long names of attributes instead of
+                their short names. Defaults to True.
+            mplug (MPlug, optional): The MPlug to retrieve the name from. If not provided, the
+                decorator or other logic may handle the setup. Defaults to None.
+
+        Returns:
+            str: The computed plug name as a string, based on the specified parameters.
+        """
+        plug_name = mplug.partialName(includeNodeName=include_node, useAlias=alias,
                                                useFullAttributePath=full_attr_path, useLongNames=long_names)
         return plug_name
 
     @recycle_mfn
-    def attr_name(self, long_name:bool=True, include_node:bool=True, mfn:om.MFnAttribute=None) -> str:
+    def attr_name(self, long_name:bool=True, mfn:om.MFnAttribute=None) -> str:
+        """
+        Retrieves the name of an attribute, either its long name or short name.
+
+        Parameters:
+            long_name (bool, optional): If True, returns the attribute's long name. If False, returns its short name.
+                Defaults to True.
+            mfn (MFnAttribute, optional): The attribute function set (`MFnAttribute`) to retrieve the name from.
+                If not provided, the decorator or other logic may handle the setup. Defaults to None.
+
+        Returns:
+            str: The attribute's name, either its long name or short name, based on the `long_name` parameter.
+        """
         if long_name:
             name = mfn.name
         else:
             name = mfn.shortName
-        if include_node:
-            return f'{self.node().name()}.{name}'
+        return name
 
-    def node(self) -> MayaObject:
+    def node(self) -> DependNode:
         if self._node is None:
             handle = om.MObjectHandle(self.api_mplug().node())
             self._node = self._factory(MObjectHandle=handle)
@@ -130,6 +166,31 @@ class Attribute(MayaObject):
         if self._attr_type is None:
             self._attr_type = AttrType.from_mobject(self.api_mobject())
         return self._attr_type
+
+    def attr(self, name):
+        if self.has_attr(name):
+            return self.node().attr(name)
+        else:
+            raise AttributeError(f'{self.name()} has no attribute named {name}')
+
+    def has_attr(self, name:str) -> bool:
+        """
+        Verify whether an attribute with the given name exists under the current attribute
+
+        Args:
+            name (str): the name of the attribute
+
+        Returns:
+            bool: True if it exists, False otherwise
+
+        """
+        mfn = om.MFnDependencyNode(self.node().api_mobject())
+        if mfn.hasAttribute(name):
+            mobj = mfn.findPlug(name).attribute()
+            parent = om.MFnAttribute(mobj).parent
+            if self.api_mobject() == parent:
+                return True
+        return False
 
     # PARAMETERS
     @recycle_mplug
