@@ -194,7 +194,7 @@ class DependNode(MayaObject):
         return modifier
 
     @classmethod
-    def _create(cls, node_type:Union[str, int], name:str=None) -> "DependNode":
+    def create_(cls, node_type:Union[str, int], name:str=None) -> "DependNode":
         """
         NOT UNDOABLE
         Create a new Dependency node of the given type. If no name is specified, it will be based on the node_type

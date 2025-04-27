@@ -1,9 +1,12 @@
+import inspect
 from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Union, Dict, Callable
 
 from maya.api import OpenMaya as om
 
+from omwrapper.api import apiundo
+from omwrapper.api.modifiers.custom import ProxyModifier
 from omwrapper.api.utilities import unique_object_exists
 from omwrapper.entities.factory import PyObject
 
@@ -115,3 +118,30 @@ def recycle_mfn(func:Callable):
         result = func(*args, **kwargs)
         return result
     return wrapped
+
+def undoable_proxy_wrap(get_method, set_method):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            get_parameters = inspect.signature(get_method).parameters.keys()
+            get_kwargs = {k:v for k, v in kwargs if k in get_parameters}
+            old_value = get_method(**get_kwargs)
+
+            set_signature = inspect.signature(set_method)
+            do_bound_args = set_signature.bind(*args, **kwargs)
+            do_bound_args.apply_defaults()
+
+            do_kwargs = do_bound_args.arguments
+            undo_kwargs = do_kwargs.copy()
+            k = next(iter(undo_kwargs))
+            undo_kwargs[k] = old_value
+
+            mod = ProxyModifier(do_func=set_method, do_kwargs=do_kwargs, undo_kwargs=undo_kwargs)
+            mod.doIt()
+
+            apiundo.commit(undo=mod.undoIt, redo=mod.doIt)
+
+        wrapper.__doc__ = set_method.__doc__
+        wrapper.__annotations__ = set_method.__annotations__
+        return wrapper
+    return decorator

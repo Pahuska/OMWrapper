@@ -53,7 +53,7 @@ class DagNode(DependNode):
         return self.api_dagpath()
 
     @classmethod
-    def _create(cls, node_type: Union[str, int], name: str = None,
+    def create_(cls, node_type: Union[str, int], name: str = None,
                 parent:Union[om.MObject, "DagNode"]=None) -> "DagNode":
         """
         NOT UNDOABLE

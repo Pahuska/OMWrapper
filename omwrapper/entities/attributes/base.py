@@ -12,8 +12,8 @@ from omwrapper.api.modifiers.custom import ProxyModifier
 from omwrapper.api.modifiers.maya import DGModifier, DagModifier
 from omwrapper.api.utilities import get_plug_value, set_plug_value, name_to_api
 from omwrapper.constants import DataType, AttrType
-from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
-from omwrapper.pytools import Iterator, Signal
+from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn, undoable_proxy_wrap
+from omwrapper.pytools import Iterator
 
 if TYPE_CHECKING:
     from omwrapper.entities.nodes.dependency import DependNode
@@ -23,6 +23,7 @@ TOutputs = Union[List[TInputs], None]
 TConnect = Union["Attribute", str, om.MPlug]
 TDefaultValues = Union[int, float, str, bool, List[Union[int, float]]]
 TEnumField = List[Tuple[str, int]]
+TQuantifiableFn = Union[om.MFnNumericAttribute, om.MFnUnitAttribute]
 
 def recycle_mplug(func):
     @wraps(func)
@@ -61,6 +62,14 @@ class Attribute(MayaObject):
         super().__init__(**kwargs)
         self._data_type = None
         self._attr_type = None
+
+    def __getattr__(self, item):
+        return self.attr(item)
+
+    def __getitem__(self, item):
+        plug = self.api_mplug().elementByLogicalIndex(item)
+        handle = om.MObjectHandle(plug.attribute())
+        return self._factory(MPlug=plug, MObjectHandle=handle, node=self.node())
 
     # API STUFF
     def api_mfn(self) -> om.MFnBase:
@@ -517,6 +526,233 @@ class Attribute(MayaObject):
         plugs.insert(0, mplug)
         _modifier.disconnect_(*args)
 
+# ToDo: make the undoable versions of these.
+#  Maybe make something to easily wrap stuff in a ProxyModifier to avoid redundancy.
+class QuantifiableAttribute(Attribute):
+    @recycle_mfn
+    def has_min(self, mfn:TQuantifiableFn):
+        """
+        Check if this attribute has a minimum value defined.
+
+        Args:
+            mfn (TQuantifiableFn, optional): The function set used for this check.
+
+        Returns:
+            bool: True if the attribute has a minimum value, False otherwise.
+        """
+
+        return mfn.hasMin()
+    @recycle_mfn
+    def has_max(self, mfn: TQuantifiableFn):
+        """
+        Check if this attribute has a maximum value defined.
+
+        Args:
+            mfn (TQuantifiableFn, optional): The function set used for this check.
+
+        Returns:
+            bool: True if the attribute has a maximum value, False otherwise.
+        """
+        return mfn.hasMax()
+
+    @recycle_mfn
+    def get_min(self, mfn: TQuantifiableFn):
+        """
+        Retrieve the minimum value of this attribute.
+
+        Args:
+            mfn (TQuantifiableFn, optional): The function set used for this operation.
+
+        Returns:
+            TDefaultValues: The current minimum value of the attribute.
+        """
+        return mfn.getMin()
+
+    @recycle_mfn
+    def get_max(self, mfn: TQuantifiableFn):
+        """
+        Retrieve the maximum value of this attribute.
+
+        Args:
+            mfn (TQuantifiableFn, optional): The function set used for this operation.
+
+        Returns:
+            TDefaultValues: The current maximum value of the attribute.
+        """
+
+        return mfn.getMax()
+
+    @recycle_mfn
+    def has_soft_min(self, mfn: TQuantifiableFn):
+        """
+        Check if this attribute has a minimum value defined.
+
+        Args:
+            mfn (TQuantifiableFn, optional): The function set used for this check.
+
+        Returns:
+            bool: True if the attribute has a minimum value, False otherwise.
+        """
+
+        return mfn.hasSoftMin()
+
+    @recycle_mfn
+    def has_soft_max(self, mfn: TQuantifiableFn):
+        """
+        Check if this attribute has a maximum value defined.
+
+        Args:
+            mfn (TQuantifiableFn, optional): The function set used for this check.
+
+        Returns:
+            bool: True if the attribute has a maximum value, False otherwise.
+        """
+        return mfn.hasSoftMax()
+
+    @recycle_mfn
+    def get_soft_min(self, mfn: TQuantifiableFn):
+        """
+        Retrieve the minimum value of this attribute.
+
+        Args:
+            mfn (TQuantifiableFn, optional): The function set used for this operation.
+
+        Returns:
+            TDefaultValues: The current minimum value of the attribute.
+        """
+        return mfn.getSoftMin()
+
+    @recycle_mfn
+    def get_soft_max(self, mfn: TQuantifiableFn):
+        """
+        Retrieve the maximum value of this attribute.
+
+        Args:
+            mfn (TQuantifiableFn, optional): The function set used for this operation.
+
+        Returns:
+            TDefaultValues: The current maximum value of the attribute.
+        """
+
+        return mfn.getSoftMax()
+
+    @recycle_mfn
+    def set_min_(self, value:TDefaultValues, mfn: TQuantifiableFn):
+        """
+        NOT UNDOABLE
+        Set the min value of this attribute
+        Args:
+            value (TDefaultValues): the new min value
+            mfn (TQuantifiableFn): the optional function set used for this operation
+
+        Returns:
+            None
+        """
+        mfn.setMin(value)
+
+    @recycle_mfn
+    def set_max_(self, value: TDefaultValues, mfn: TQuantifiableFn):
+        """
+        NOT UNDOABLE
+        Set the max value of this attribute
+        Args:
+            value (TDefaultValues): the new max value
+            mfn (TQuantifiableFn): the optional function set used for this operation
+
+        Returns:
+            None
+        """
+        mfn.setMax(value)
+
+    @recycle_mfn
+    def set_soft_min_(self, value: TDefaultValues, mfn: TQuantifiableFn):
+        """
+        NOT UNDOABLE
+        Set the soft min value of this attribute
+        Args:
+            value (TDefaultValues): the new min value
+            mfn (TQuantifiableFn): the optional function set used for this operation
+
+        Returns:
+            None
+        """
+        mfn.setSoftMin(value)
+
+    @recycle_mfn
+    def set_soft_max_(self, value: TDefaultValues, mfn: TQuantifiableFn):
+        """
+        NOT UNDOABLE
+        Set the soft max value of this attribute
+        Args:
+            value (TDefaultValues): the new max value
+            mfn (TQuantifiableFn): the optional function set used for this operation
+
+        Returns:
+            None
+        """
+        mfn.setSoftMax(value)
+
+    #ToDo: make sure we don't need to invert those decorators below
+    @recycle_mfn
+    @undoable_proxy_wrap(get_min, set_min_)
+    def set_min(self, value:TDefaultValues, mfn: TQuantifiableFn):
+        """
+        UNDOABLE
+        Set the min value of this attribute
+        Args:
+            value (TDefaultValues): the new min value
+            mfn (TQuantifiableFn, optional): the optional function set used for this operation
+
+        Returns:
+            None
+        """
+        ...
+
+    @recycle_mfn
+    @undoable_proxy_wrap(get_max, set_max_)
+    def set_max(self, value:TDefaultValues, mfn: TQuantifiableFn):
+        """
+        UNDOABLE
+        Set the max value of this attribute
+        Args:
+            value (TDefaultValues): the new max value
+            mfn (TQuantifiableFn): the optional function set used for this operation
+
+        Returns:
+            None
+        """
+        ...
+
+    @recycle_mfn
+    @undoable_proxy_wrap(get_soft_min, set_soft_min_)
+    def set_soft_min(self, value: TDefaultValues, mfn: TQuantifiableFn):
+        """
+        UNDOABLE
+        Set the min value of this attribute
+        Args:
+            value (TDefaultValues): the new min value
+            mfn (TQuantifiableFn, optional): the optional function set used for this operation
+
+        Returns:
+            None
+        """
+        ...
+
+    @recycle_mfn
+    @undoable_proxy_wrap(get_soft_max, set_soft_max_)
+    def set_soft_max(self, value: TDefaultValues, mfn: TQuantifiableFn):
+        """
+        UNDOABLE
+        Set the max value of this attribute
+        Args:
+            value (TDefaultValues): the new max value
+            mfn (TQuantifiableFn): the optional function set used for this operation
+
+        Returns:
+            None
+        """
+        ...
+
 @dataclass
 class AttrData:
     """
@@ -870,6 +1106,15 @@ class AttributeHandler:
 
 class AttrContext:
     def __init__(self, handler:AttributeHandler, modifier:DGModifier, undo:bool=True):
+        """
+        A context that simplifies the creation, adding and undoing of several attributes to a node.
+        Upon exiting the context, the modifier's doIt method will be called, the undo will be setup, if required and the
+        handler will be purged
+        Args:
+            handler (AttributeHandler): the AttributeHandler linked to the node we add the attributes to
+            modifier (DGModifier): the modifier used for this operation
+            undo (bool): whether you want to this operation to be undoable or not
+        """
         self.handler = handler
         self.modifier = modifier
         self.undo = undo

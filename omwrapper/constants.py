@@ -11,6 +11,8 @@ class ObjectType(Enum):
     DAG_NODE = 1
     ATTRIBUTE = 2
     COMPONENT = 3
+    NUMERIC_ATTR = 4
+    UNIT_ATTR = 5
 
     @classmethod
     def from_mfn(cls, value: int) -> "ObjectType":
