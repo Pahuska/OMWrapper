@@ -137,7 +137,6 @@ def timeit(name:str='timer', log:bool=False, verbose:bool=True):
         return timed
     return wrapper
 
-
 class Timer:
     result_dic = OrderedDict()
 
@@ -183,3 +182,10 @@ class Timer:
                     del cls.result_dic[k]
         else:
             cls.result_dic = OrderedDict()
+
+def get_by_index(obj, index):
+    if index < 0 < len(obj):
+        raise IndexError("Index out of bounds.")
+    for i, value in enumerate(obj):
+        if i == index:
+            return value

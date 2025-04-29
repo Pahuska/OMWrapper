@@ -45,3 +45,4 @@ with AttrContext(py_node.attr_handler(), mod, undo=True):
         py_node.add_attr(at, _modifier=mod)
 
 attribute = pyObject('persp.translateX')
+at = py_node.float_a

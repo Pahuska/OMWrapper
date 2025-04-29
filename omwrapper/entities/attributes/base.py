@@ -234,7 +234,7 @@ class Attribute(MayaObject):
         return mplug.isDynamic
 
     @recycle_mfn
-    def is_multi(self, mfn: om.MFnAttribute) -> bool:
+    def is_multi(self, mfn: om.MFnAttribute=None) -> bool:
         return mfn.array
 
     @recycle_mplug
@@ -530,7 +530,7 @@ class Attribute(MayaObject):
 #  Maybe make something to easily wrap stuff in a ProxyModifier to avoid redundancy.
 class QuantifiableAttribute(Attribute):
     @recycle_mfn
-    def has_min(self, mfn:TQuantifiableFn):
+    def has_min(self, mfn:TQuantifiableFn=None):
         """
         Check if this attribute has a minimum value defined.
 
@@ -543,7 +543,7 @@ class QuantifiableAttribute(Attribute):
 
         return mfn.hasMin()
     @recycle_mfn
-    def has_max(self, mfn: TQuantifiableFn):
+    def has_max(self, mfn: TQuantifiableFn=None):
         """
         Check if this attribute has a maximum value defined.
 
@@ -556,7 +556,7 @@ class QuantifiableAttribute(Attribute):
         return mfn.hasMax()
 
     @recycle_mfn
-    def get_min(self, mfn: TQuantifiableFn):
+    def get_min(self, mfn: TQuantifiableFn=None):
         """
         Retrieve the minimum value of this attribute.
 
@@ -569,7 +569,7 @@ class QuantifiableAttribute(Attribute):
         return mfn.getMin()
 
     @recycle_mfn
-    def get_max(self, mfn: TQuantifiableFn):
+    def get_max(self, mfn: TQuantifiableFn=None):
         """
         Retrieve the maximum value of this attribute.
 
@@ -583,7 +583,7 @@ class QuantifiableAttribute(Attribute):
         return mfn.getMax()
 
     @recycle_mfn
-    def has_soft_min(self, mfn: TQuantifiableFn):
+    def has_soft_min(self, mfn: TQuantifiableFn=None):
         """
         Check if this attribute has a minimum value defined.
 
@@ -597,7 +597,7 @@ class QuantifiableAttribute(Attribute):
         return mfn.hasSoftMin()
 
     @recycle_mfn
-    def has_soft_max(self, mfn: TQuantifiableFn):
+    def has_soft_max(self, mfn: TQuantifiableFn=None):
         """
         Check if this attribute has a maximum value defined.
 
@@ -610,7 +610,7 @@ class QuantifiableAttribute(Attribute):
         return mfn.hasSoftMax()
 
     @recycle_mfn
-    def get_soft_min(self, mfn: TQuantifiableFn):
+    def get_soft_min(self, mfn: TQuantifiableFn=None):
         """
         Retrieve the minimum value of this attribute.
 
@@ -623,7 +623,7 @@ class QuantifiableAttribute(Attribute):
         return mfn.getSoftMin()
 
     @recycle_mfn
-    def get_soft_max(self, mfn: TQuantifiableFn):
+    def get_soft_max(self, mfn: TQuantifiableFn=None):
         """
         Retrieve the maximum value of this attribute.
 
@@ -637,7 +637,7 @@ class QuantifiableAttribute(Attribute):
         return mfn.getSoftMax()
 
     @recycle_mfn
-    def set_min_(self, value:TDefaultValues, mfn: TQuantifiableFn):
+    def set_min_(self, value:TDefaultValues, mfn: TQuantifiableFn=None):
         """
         NOT UNDOABLE
         Set the min value of this attribute
@@ -651,7 +651,7 @@ class QuantifiableAttribute(Attribute):
         mfn.setMin(value)
 
     @recycle_mfn
-    def set_max_(self, value: TDefaultValues, mfn: TQuantifiableFn):
+    def set_max_(self, value: TDefaultValues, mfn: TQuantifiableFn=None):
         """
         NOT UNDOABLE
         Set the max value of this attribute
@@ -665,7 +665,7 @@ class QuantifiableAttribute(Attribute):
         mfn.setMax(value)
 
     @recycle_mfn
-    def set_soft_min_(self, value: TDefaultValues, mfn: TQuantifiableFn):
+    def set_soft_min_(self, value: TDefaultValues, mfn: TQuantifiableFn=None):
         """
         NOT UNDOABLE
         Set the soft min value of this attribute
@@ -679,7 +679,7 @@ class QuantifiableAttribute(Attribute):
         mfn.setSoftMin(value)
 
     @recycle_mfn
-    def set_soft_max_(self, value: TDefaultValues, mfn: TQuantifiableFn):
+    def set_soft_max_(self, value: TDefaultValues, mfn: TQuantifiableFn=None):
         """
         NOT UNDOABLE
         Set the soft max value of this attribute
@@ -693,9 +693,11 @@ class QuantifiableAttribute(Attribute):
         mfn.setSoftMax(value)
 
     #ToDo: make sure we don't need to invert those decorators below
+
+
     @recycle_mfn
     @undoable_proxy_wrap(get_min, set_min_)
-    def set_min(self, value:TDefaultValues, mfn: TQuantifiableFn):
+    def set_min(self, value:TDefaultValues, mfn: TQuantifiableFn=None):
         """
         UNDOABLE
         Set the min value of this attribute
@@ -710,7 +712,7 @@ class QuantifiableAttribute(Attribute):
 
     @recycle_mfn
     @undoable_proxy_wrap(get_max, set_max_)
-    def set_max(self, value:TDefaultValues, mfn: TQuantifiableFn):
+    def set_max(self, value:TDefaultValues, mfn: TQuantifiableFn=None):
         """
         UNDOABLE
         Set the max value of this attribute
@@ -725,7 +727,7 @@ class QuantifiableAttribute(Attribute):
 
     @recycle_mfn
     @undoable_proxy_wrap(get_soft_min, set_soft_min_)
-    def set_soft_min(self, value: TDefaultValues, mfn: TQuantifiableFn):
+    def set_soft_min(self, value: TDefaultValues, mfn: TQuantifiableFn=None):
         """
         UNDOABLE
         Set the min value of this attribute
@@ -740,7 +742,7 @@ class QuantifiableAttribute(Attribute):
 
     @recycle_mfn
     @undoable_proxy_wrap(get_soft_max, set_soft_max_)
-    def set_soft_max(self, value: TDefaultValues, mfn: TQuantifiableFn):
+    def set_soft_max(self, value: TDefaultValues, mfn: TQuantifiableFn=None):
         """
         UNDOABLE
         Set the max value of this attribute

@@ -3,19 +3,9 @@ from typing import List, Union, Any, Tuple, Type
 
 from maya.api import OpenMaya as om
 
-class ObjectType(Enum):
-    """
-    The most basic types of object in Maya
-    """
-    DEPEND_NODE = 0
-    DAG_NODE = 1
-    ATTRIBUTE = 2
-    COMPONENT = 3
-    NUMERIC_ATTR = 4
-    UNIT_ATTR = 5
-
+class MFnMixin:
     @classmethod
-    def from_mfn(cls, value: int) -> "ObjectType":
+    def from_mfn(cls, value: int) -> Enum:
         """
         Converts an API MFn constant to an ObjectType
         Args:
@@ -25,13 +15,13 @@ class ObjectType(Enum):
             ObjectType: the converted result
 
         """
-        if value in mfn_to_object_type:
-            return mfn_to_object_type[value]
-        else:
+        try:
+            return cls(value)
+        except ValueError:
             raise ValueError(f'No matching ObjectType for MFn constant {value}')
 
     @classmethod
-    def to_mfn(cls, value: "ObjectType") -> int:
+    def to_mfn(cls, value: Enum) -> int:
         """
         Converts an ObjectType to an API MFn constant
         Args:
@@ -41,10 +31,7 @@ class ObjectType(Enum):
             MFn constant: the converted result
 
         """
-        if value in object_type_to_mfn:
-            return object_type_to_mfn[value]
-        else:
-            raise ValueError(f'No matching MFn constant for {value}')
+        return value.value
 
     @classmethod
     def iter_members(cls):
@@ -57,13 +44,40 @@ class ObjectType(Enum):
             yield cls.to_mfn(member)
 
 
-object_type_to_mfn = {ObjectType.DEPEND_NODE: om.MFn.kDependencyNode,
-                      ObjectType.DAG_NODE: om.MFn.kDagNode,
-                      ObjectType.ATTRIBUTE: om.MFn.kAttribute,
-                      ObjectType.COMPONENT: om.MFn.kComponent}
+class AttributeType(MFnMixin, Enum):
+    NUMERIC = om.MFn.kNumericAttribute
+    UNIT = om.MFn.kUnitAttribute
 
-mfn_to_object_type = {v: k for k, v in object_type_to_mfn.items()}
+class DependNodeType(MFnMixin, Enum):
+    ...
 
+class DagNodeType(MFnMixin, Enum):
+    TRANSFORM = om.MFn.kTransform
+
+class ComponentType(MFnMixin, Enum):
+    ...
+
+TSubtypes = Union[Type[DependNodeType], Type[DagNodeType], Type[AttributeType], Type[ComponentType]]
+
+class ObjectType(MFnMixin, Enum):
+    #ToDo: add a from_MObject method maybe ?
+    """
+    The most basic types of object in Maya
+    """
+    DAG_NODE = om.MFn.kDagNode
+    DEPEND_NODE = om.MFn.kDependencyNode
+    ATTRIBUTE = om.MFn.kAttribute
+    COMPONENT = om.MFn.kComponent
+
+    @classmethod
+    def get_subtype(cls, value:"ObjectType") -> TSubtypes:
+        return object_subtypes_map[value]
+
+
+object_subtypes_map = {ObjectType.DEPEND_NODE:DependNodeType,
+                       ObjectType.DAG_NODE:DagNodeType,
+                       ObjectType.ATTRIBUTE:AttributeType,
+                       ObjectType.COMPONENT:ComponentType}
 class DataType(Enum):
     INVALID = 0
     DISTANCE = 1

@@ -24,9 +24,9 @@ class DependNode(MayaObject):
         self._attribute_handler = AttributeHandler(self.api_mobject())
 
     def __getattr__(self, item):
-        print(f'getting attribute {item}')
         attr = self.attr(item)
         setattr(self, item, attr)
+        return attr
 
     def api_mfn(self) -> om.MFnDependencyNode:
         return self._mfn_class(self.api_mobject())

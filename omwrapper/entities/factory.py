@@ -166,13 +166,20 @@ class PyObject:
         for mfn in ObjectType.iter_mfn():
             if api_obj.hasFn(mfn):
                 global_type = ObjectType.from_mfn(mfn)
+                sub_type_enum = ObjectType.get_subtype(global_type)
+                for sub_mfn in sub_type_enum.iter_mfn():
+                    if api_obj.hasFn(sub_mfn):
+                        exact_type = sub_type_enum.from_mfn(sub_mfn)
+                        break
+                else:
+                    exact_type = global_type
                 break
         else:
             raise TypeError(f'Unrecognized api type : {api_obj.apiType}')
 
-        cls = self._registry.get(global_type, None)
+        cls = self._registry.get(exact_type, None)
         if cls is None:
-            raise NotImplementedError(f'{global_type} is not yet implemented')
+            raise NotImplementedError(f'{exact_type} is not yet implemented')
 
         return cls
 

@@ -9,6 +9,7 @@ from omwrapper.api import apiundo
 from omwrapper.api.modifiers.custom import ProxyModifier
 from omwrapper.api.utilities import unique_object_exists
 from omwrapper.entities.factory import PyObject
+from omwrapper.pytools import get_by_index
 
 TMayaObjectApi = Union[om.MObject, om.MObjectHandle, om.MPlug, om.MDagPath]
 
@@ -111,7 +112,12 @@ class MayaObject(ABC):
 def recycle_mfn(func:Callable):
     @wraps(func)
     def wrapped(*args, **kwargs):
-        inst = args[0]
+        signature = inspect.signature(func)
+        bound_args = signature.bind(*args, **kwargs)
+        bound_args.apply_defaults()
+        bound_kwargs = bound_args.arguments
+
+        inst = bound_kwargs['self']
         mfn = kwargs.get('mfn', None)
         if mfn is None:
             kwargs['mfn'] = inst.api_mfn()
@@ -120,28 +126,48 @@ def recycle_mfn(func:Callable):
     return wrapped
 
 def undoable_proxy_wrap(get_method, set_method):
+    """
+    A decorator that helps to wrap non-undoable methods into a ProxyModifier to make them undoable. This is typically
+    used for actions that can't be easily made undoable with a classic modifier. The decorator requires a pair of get
+    and set methods.
+    The process is as follows:
+        - get the Signature of the set_method and fill it with the provided args & kwargs
+        - get the Signature of the get_method and fill it with the matching kwargs from the previous step
+        - get the current value with the get_method
+        - copy the OrderedDict from step 1 and update the second param(which is assumed to be the value to set, as the
+          first param should be the instance (self))
+        - create the ProxyModifier, execute it and register it for undoing
+
+    Args:
+        get_method (Callable): the method used to get the current value
+        set_method (Callable): the method used to set the new value, and set the old value when undoing
+    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            get_parameters = inspect.signature(get_method).parameters.keys()
-            get_kwargs = {k:v for k, v in kwargs if k in get_parameters}
-            old_value = get_method(**get_kwargs)
+            # Get the signature of set_method and fill it with the args and kwargs, then convert it to an OrderedDict
+            #  so that we have all the kwargs parameters filled
 
             set_signature = inspect.signature(set_method)
             do_bound_args = set_signature.bind(*args, **kwargs)
             do_bound_args.apply_defaults()
-
             do_kwargs = do_bound_args.arguments
+
+            # Get the signature of get_method and fill it with the matching kwargs from set_method, then get the current
+            #  value so that we can use it for undoing
+            get_parameters = inspect.signature(get_method).parameters.keys()
+            get_kwargs = {k:v for k, v in do_kwargs.items() if k in get_parameters}
+            old_value = get_method(**get_kwargs)
+
+            # get the second parameter of set_method, which is assumed to be the value to set.
+            #  note : The first parameter should be the instance (self)
+            k = get_by_index(do_kwargs, 1)
             undo_kwargs = do_kwargs.copy()
-            k = next(iter(undo_kwargs))
             undo_kwargs[k] = old_value
 
+            # Create the ProxyModifier and execute it, then register it for undoing
             mod = ProxyModifier(do_func=set_method, do_kwargs=do_kwargs, undo_kwargs=undo_kwargs)
             mod.doIt()
-
             apiundo.commit(undo=mod.undoIt, redo=mod.doIt)
-
-        wrapper.__doc__ = set_method.__doc__
-        wrapper.__annotations__ = set_method.__annotations__
         return wrapper
     return decorator
