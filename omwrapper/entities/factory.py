@@ -144,7 +144,6 @@ class PyObject:
                 kwargs['MObjectHandle'] = om.MObjectHandle(mobj)
 
             _class = self.class_from_api_object(mobj)
-            # ToDo: finish to implement this ^, but we need some work done on the MayaObject subclasses first
             assert 'MObjectHandle' in kwargs, 'DEBUG : MObjectHandle missing from kwargs ' \
                                               '\nclass:<{}>\nkwargs:{}'.format(_class, kwargs)
 

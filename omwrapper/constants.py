@@ -4,6 +4,7 @@ from typing import List, Union, Any, Tuple, Type
 from maya.api import OpenMaya as om
 
 class MFnMixin:
+    #ToDo: add a from_MObject method maybe ?
     @classmethod
     def from_mfn(cls, value: int) -> Enum:
         """
@@ -60,7 +61,6 @@ class ComponentType(MFnMixin, Enum):
 TSubtypes = Union[Type[DependNodeType], Type[DagNodeType], Type[AttributeType], Type[ComponentType]]
 
 class ObjectType(MFnMixin, Enum):
-    #ToDo: add a from_MObject method maybe ?
     """
     The most basic types of object in Maya
     """

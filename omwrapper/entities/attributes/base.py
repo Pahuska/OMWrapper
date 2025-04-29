@@ -25,6 +25,7 @@ TDefaultValues = Union[int, float, str, bool, List[Union[int, float]]]
 TEnumField = List[Tuple[str, int]]
 TQuantifiableFn = Union[om.MFnNumericAttribute, om.MFnUnitAttribute]
 
+#ToDo: update this like recycle_mfn to make it work with the undoable_proxy_wrap
 def recycle_mplug(func):
     @wraps(func)
     def wrapped(*args, **kwargs):
@@ -321,7 +322,7 @@ class Attribute(MayaObject):
                     else:
                         result.append(self._factory(src))
                 it.next()
-            return result #ToDo: what's the problem here ?
+            return result
         else:
             if not mplug.isDestination:
                 return None
@@ -526,8 +527,6 @@ class Attribute(MayaObject):
         plugs.insert(0, mplug)
         _modifier.disconnect_(*args)
 
-# ToDo: make the undoable versions of these.
-#  Maybe make something to easily wrap stuff in a ProxyModifier to avoid redundancy.
 class QuantifiableAttribute(Attribute):
     @recycle_mfn
     def has_min(self, mfn:TQuantifiableFn=None):
@@ -691,9 +690,6 @@ class QuantifiableAttribute(Attribute):
             None
         """
         mfn.setSoftMax(value)
-
-    #ToDo: make sure we don't need to invert those decorators below
-
 
     @recycle_mfn
     @undoable_proxy_wrap(get_min, set_min_)
