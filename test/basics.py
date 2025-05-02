@@ -5,6 +5,7 @@ if src_root not in sys.path:
     sys.path.insert(0, src_root)
 
 from maya import cmds
+from maya.api import OpenMaya as om
 
 from omwrapper.reload import reload_modules
 reload_modules()
@@ -28,12 +29,14 @@ enum_b = AttrData('enum_b', attr_type=AttrType.ENUM, enum_names='yellow=0:red=10
                   keyable=True)
 string_c = AttrData('string_c', attr_type=AttrType.STRING, default_value='coucou', parent=compound, keyable=True)
 
+vector_d = AttrData('vector_d', data_type=DataType.FLOAT3, default_value=om.MVector.kXaxisVector, keyable=True)
+
 node = cmds.polySphere()[0]
 py_node = pyObject(node)
 py_node.rename('pCube3')
 print(py_node.has_attr('translateW'))
 
-attributes = [ikfk, compound, float_a, enum_b,string_c]
+attributes = [ikfk, compound, float_a, enum_b,string_c, vector_d]
 
 for at in attributes:
     py_node.add_attr(at)
@@ -45,4 +48,4 @@ with AttrContext(py_node.attr_handler(), mod, undo=True):
         py_node.add_attr(at, _modifier=mod)
 
 attribute = pyObject('persp.translateX')
-at = py_node.float_a
+at = py_node.vector_d

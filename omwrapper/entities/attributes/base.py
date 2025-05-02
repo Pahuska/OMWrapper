@@ -64,7 +64,7 @@ class Attribute(MayaObject):
         self._data_type = None
         self._attr_type = None
 
-    def __getattr__(self, item):
+    def __getattr__(self, item) -> Attribute:
         return self.attr(item)
 
     def __getitem__(self, item):
@@ -78,10 +78,6 @@ class Attribute(MayaObject):
 
     def api_mplug(self) -> om.MPlug:
         return self._api_input['MPlug']
-
-    def api_mdagpath(self):
-        #ToDo: implement this when DagNode will be available
-        ...
 
     @classmethod
     def get_build_data_from_name(cls, name:str) -> Dict[str, TMayaObjectApi]:

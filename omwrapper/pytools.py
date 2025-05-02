@@ -1,7 +1,7 @@
 import time
 from collections import OrderedDict
 from functools import wraps
-from typing import List, Any
+from typing import List, Any, Sequence
 
 
 class Iterator:
@@ -189,3 +189,9 @@ def get_by_index(obj, index):
     for i, value in enumerate(obj):
         if i == index:
             return value
+
+def sequence_product(seq:Sequence):
+    count = 1
+    for n in seq:
+        count *= n
+    return count

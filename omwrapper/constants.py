@@ -48,12 +48,18 @@ class MFnMixin:
 class AttributeType(MFnMixin, Enum):
     NUMERIC = om.MFn.kNumericAttribute
     UNIT = om.MFn.kUnitAttribute
+    COMPOUND = om.MFn.kCompoundAttribute
 
 class DependNodeType(MFnMixin, Enum):
-    ...
+    OBJECT_SET = om.MFn.kSet
 
 class DagNodeType(MFnMixin, Enum):
     TRANSFORM = om.MFn.kTransform
+    JOINT = om.MFn.kJoint
+    MESH = om.MFn.kMesh
+    NURBS_CURVE = om.MFn.kNurbsCurve
+    NURBS_SURFACE = om.MFn.kNurbsSurface
+    LATTICE_SHAPE = om.MFn.kLattice
 
 class ComponentType(MFnMixin, Enum):
     ...

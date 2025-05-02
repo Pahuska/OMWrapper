@@ -23,7 +23,7 @@ class DependNode(MayaObject):
         super().__init__(**kwargs)
         self._attribute_handler = AttributeHandler(self.api_mobject())
 
-    def __getattr__(self, item):
+    def __getattr__(self, item) -> Attribute:
         attr = self.attr(item)
         setattr(self, item, attr)
         return attr

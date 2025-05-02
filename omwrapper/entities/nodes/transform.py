@@ -14,6 +14,9 @@ class Transform(DagNode):
     _mfn_class = om.MFnTransform
     _mfn_constant = om.MFn.kTransform
 
+    def api_mfn(self) -> om.MFnTransform:
+        return super().api_mfn()
+
     def shape_count(self):
         dag = self.api_dagpath()
         return dag.numberOfShapesDirectlyBelow()

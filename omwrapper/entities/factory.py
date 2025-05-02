@@ -1,9 +1,14 @@
-from typing import overload, Tuple, Union, Callable, Any
+from __future__ import annotations
+
+from typing import overload, Tuple, Union, Callable, Any, TYPE_CHECKING
 
 from maya.api import OpenMaya as om
 
 from omwrapper.api.utilities import name_to_api
 from omwrapper.constants import ObjectType
+
+if TYPE_CHECKING:
+    from enum import Enum
 
 class PyObject:
     """
@@ -20,7 +25,7 @@ class PyObject:
     def __call__(self, *args, **kwargs) -> Any:
         return self._create(*args, **kwargs)
 
-    def register(self, object_type:ObjectType, cls:Callable):
+    def register(self, object_type:Enum, cls:Callable):
         self._registry[object_type] = cls
 
     @overload
@@ -183,6 +188,24 @@ class PyObject:
         return cls
 
 
+    def from_selection_list(self, sel:om.MSelectionList):
+        it = om.MItSelectionList(sel)
 
-
-
+        while not it.isDone():
+            item_type = it.itemType()
+            if item_type == it.kDNselectionItem:
+                mobj = it.getDependNode()
+                yield self._create(MObjectHandle=om.MObjectHandle(mobj))
+            elif item_type == it.kDagSelectionItem:
+                if it.hasComponents():
+                    mdag, mobj = it.getComponent()
+                    yield self._create(MDagPath=mdag, MObjectHandle=om.MObjectHandle(mobj))
+                else:
+                    mdag = it.getDagPath()
+                    yield self._create(MDagPath=mdag, MObjectHandle=om.MObjectHandle(mdag.node()))
+            elif item_type == it.kPlugSelectionItem:
+                mplug = it.getPlug()
+                yield  self._create(MPlug=mplug)
+            else:
+                raise TypeError(f'Unable to find a matching constructor for {it.getStrings()}')
+            it.next()
