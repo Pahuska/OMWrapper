@@ -755,10 +755,57 @@ class QuantifiableAttribute(Attribute):
         ...
 
 class MultiAttribute(Attribute):
-    def __getitem__(self, item):
-        plug = self.api_mplug().elementByLogicalIndex(item)
+    def __getitem__(self, item) -> Attribute:
+        return self._get_item(item, False)
+
+    def __len__(self):
+        return self.api_mplug().evaluateNumElements()
+
+    def _get_item(self, item, physical=True) -> Attribute:
+        mplug = self.api_mplug()
+        if physical:
+            # Physical index will fail if the index doesn't exist, so if the index provided is out of bounds, we will
+            # look for a logical index instead, by getting the list of existing indices, finding the higher value and
+            # incrementing it by 1. Or we just pick 0 if there are no indices at all
+            if item >= mplug.evaluateNumElements():
+                indices = mplug.getExistingArrayAttributeIndices()
+                if len(indices):
+                    item = max(indices)+1
+                else:
+                    item = 0
+                plug = mplug.elementByLogicalIndex(item)
+            else:
+                plug = mplug.elementByPhysicalIndex(item)
+        else:
+            plug = mplug.elementByLogicalIndex(item)
         handle = om.MObjectHandle(plug.attribute())
         return self._factory(MPlug=plug, MObjectHandle=handle, node=self.node())
+
+    @recycle_mplug
+    def indices(self, mplug:om.MPlug=None) -> Union[om.MIntArray, Iterable]:
+        return mplug.getExistingArrayAttributeIndices()
+
+    def get(self, as_string:bool=False, time:TTime=None, context:om.MDGContext=None) -> List[Any]:
+        result = []
+        iterator = Iterator(self.indices())
+        while not iterator.is_done():
+            idx = iterator.current_item()
+            result.append(self[idx].get(as_string=as_string, time=time, context=context))
+            iterator.next()
+
+        return result
+
+    def set_(self, value:Iterable, data_type:DataType=None, mplug:om.MPlug=None):
+        for idx, v in enumerate(value):
+            self._get_item(idx).set_(value=v, data_type=data_type, mplug=mplug)
+
+    def set(self, value:Any, data_type:DataType=None, mplug:om.MPlug=None, _modifier:Union[DGModifier, DagModifier]=None):
+        for idx, v in enumerate(value):
+            self._get_item(idx).set(value=v, data_type=data_type, mplug=mplug,
+                                    _modifier=_modifier)
+
+
+
 
 
 @dataclass

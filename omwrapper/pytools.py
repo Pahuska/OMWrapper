@@ -1,7 +1,7 @@
 import time
 from collections import OrderedDict
 from functools import wraps
-from typing import List, Any, Sequence
+from typing import Any, Sequence, Iterable
 
 
 class Iterator:
@@ -9,7 +9,7 @@ class Iterator:
     A custom iterator class that iterates over a collection of data.
 
     Attributes:
-        data (List[Any]): The collection of data to be iterated over.
+        data (Iterable): The collection of data to be iterated over.
         n (int): The current index in the iteration.
 
     Methods:
@@ -22,14 +22,14 @@ class Iterator:
         current_index(): Returns the current index in the iteration.
     """
 
-    def __init__(self, data: List[Any]) -> None:
+    def __init__(self, data: Iterable) -> None:
         """
         Initializes the iterator with the given data.
 
         Args:
-            data (List[Any]): The collection of data to iterate over.
+            data (Iterable): The collection of data to iterate over.
         """
-        self.data: List[Any] = data
+        self.data = data
         self.n: int = 0
 
     def __len__(self) -> int:
