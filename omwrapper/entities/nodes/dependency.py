@@ -24,6 +24,8 @@ class DependNode(MayaObject):
         self._attribute_handler = AttributeHandler(self.api_mobject())
 
     def __getattr__(self, item) -> Attribute:
+        if not self.has_attr(item):
+            raise RuntimeError(f'no method or attribute named {item}')
         attr = self.attr(item)
         setattr(self, item, attr)
         return attr

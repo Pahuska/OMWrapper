@@ -118,9 +118,7 @@ class ProxyModifier(AbstractModifier):
             self._undo_kwargs = undo_kwargs
 
     def doIt(self):
-        print(self._do_it, self._do_args, self._do_kwargs)
         return self._do_it(*self._do_args, **self._do_kwargs)
 
     def undoIt(self):
-        print(self._undo_it, self._undo_args, self._undo_kwargs)
         return self._undo_it(*self._undo_args, **self._undo_kwargs)

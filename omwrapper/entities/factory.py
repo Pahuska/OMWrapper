@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from abc import ABC
 from typing import overload, Tuple, Union, Callable, Any, TYPE_CHECKING
 
 from maya.api import OpenMaya as om
 
 from omwrapper.api.utilities import name_to_api
-from omwrapper.constants import ObjectType
+from omwrapper.constants import ObjectType, AttributeType
 
 if TYPE_CHECKING:
     from enum import Enum
@@ -135,58 +136,34 @@ class PyObject:
                 # CASE 4B : an MObjectHandle was provided. Let's get an MObject out of it
                 mobj = kwargs['MObjectHandle'].object()
             else:
-                # CASE 4C : none of the above were provided
+                # CASE 4C : none of the above were provided, assume an MDagPath was
                 mobj = kwargs.pop('MObject', None)
                 if mobj is None:
                     mobj = kwargs['MDagPath'].node()
-                else:
-                    raise ValueError(f'Not enough data to build a PyObject : {kwargs}')
+                # else:
+                #     raise ValueError(f'Not enough data to build a PyObject : {kwargs}')
 
+            # If the MObject is a DagNode but no DagNode was provided, get one
             if 'MDagPath' not in kwargs and mobj.hasFn(om.MFn.kDagNode):
                 kwargs['MDagPath'] = om.MDagPath.getAPathTo(mobj)
 
+            # If no MObjectHandle was provided, make one
             if 'MObjectHandle' not in kwargs:
                 kwargs['MObjectHandle'] = om.MObjectHandle(mobj)
 
-            _class = self.class_from_api_object(mobj)
-            assert 'MObjectHandle' in kwargs, 'DEBUG : MObjectHandle missing from kwargs ' \
-                                              '\nclass:<{}>\nkwargs:{}'.format(_class, kwargs)
+            for mfn in ObjectType.iter_mfn():
+                if mobj.hasFn(mfn):
+                    object_type = ObjectType.from_mfn(mfn)
+                    break
+            else:
+                raise TypeError(f'Unrecognized api type : {mobj.apiType}')
+
+            selector = self._registry.get(object_type)
+            if selector is None:
+                raise NotImplementedError(f'{object_type} is not yet implemented')
+            _class = selector(**kwargs)
 
             return _class(**kwargs)
-
-    def class_from_api_object(self, api_obj:Union[om.MDagPath, om.MObject]) -> Callable:
-        """
-        Get the proper class from the registry for an API object. We first narrow it down by figuring out the global
-        type. Is it a DependencyNode ? An Attribute ? etc... then try to get more specific. If we can't, we just fall
-        back to the global type
-
-        Args:
-            api_obj (MDagPath, MObject): the api object to get the class for
-
-        Returns:
-            Callable: the input from the registry that matches this api object
-
-        """
-        for mfn in ObjectType.iter_mfn():
-            if api_obj.hasFn(mfn):
-                global_type = ObjectType.from_mfn(mfn)
-                sub_type_enum = ObjectType.get_subtype(global_type)
-                for sub_mfn in sub_type_enum.iter_mfn():
-                    if api_obj.hasFn(sub_mfn):
-                        exact_type = sub_type_enum.from_mfn(sub_mfn)
-                        break
-                else:
-                    exact_type = global_type
-                break
-        else:
-            raise TypeError(f'Unrecognized api type : {api_obj.apiType}')
-
-        cls = self._registry.get(exact_type, None)
-        if cls is None:
-            raise NotImplementedError(f'{exact_type} is not yet implemented')
-
-        return cls
-
 
     def from_selection_list(self, sel:om.MSelectionList):
         it = om.MItSelectionList(sel)
@@ -209,3 +186,39 @@ class PyObject:
             else:
                 raise TypeError(f'Unable to find a matching constructor for {it.getStrings()}')
             it.next()
+
+
+class BaseSelector(ABC):
+    def __init__(self, object_type:ObjectType):
+        self.object_type = object_type
+        self._registry = {}
+
+    def __call__(self, *args, **kwargs):
+        return self.get_class(*args, **kwargs)
+
+    def register(self, sub_type:Enum, cls:Callable):
+        self._registry[sub_type] = cls
+
+    def get_class(self, MObjectHandle:om.MObjectHandle, **kwargs) -> Callable:
+        obj = MObjectHandle.object()
+
+        sub_type_enum = ObjectType.get_subtype(self.object_type)
+        for sub_mfn in sub_type_enum.iter_mfn():
+            if obj.hasFn(sub_mfn):
+                exact_type = sub_type_enum.from_mfn(sub_mfn)
+                break
+        else:
+            exact_type = self.object_type
+
+        cls = self._registry.get(exact_type)
+        if cls is None:
+            raise NotImplementedError(f'{exact_type} is not yet implemented')
+        return cls
+
+class AttributeSelector(BaseSelector):
+    MULTI = 'Multi'
+    def get_class(self, MPlug:om.MPlug, **kwargs) -> Callable:
+        if MPlug.isArray:
+            return self._registry.get(self.MULTI)
+        else:
+            return super().get_class(**kwargs)

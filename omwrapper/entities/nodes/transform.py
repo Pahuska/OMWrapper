@@ -45,6 +45,7 @@ class Transform(DagNode):
             for shape in self.get_shapes():
                 if shape.has_attr(name):
                     return True
+        return False
 
     def attr(self, name:str, check_shape:bool=True):
         if self.has_attr(name, False):

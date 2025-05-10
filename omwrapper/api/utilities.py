@@ -2,6 +2,7 @@ from functools import wraps
 from typing import Union, Tuple, Any
 
 from maya.api import OpenMaya as om
+from maya import OpenMaya as om1
 
 from omwrapper.api import apiundo
 from omwrapper.api.modifiers.base import TModifier

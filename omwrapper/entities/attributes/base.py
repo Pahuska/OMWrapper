@@ -53,6 +53,7 @@ def _as_mplug(attribute:TConnect) -> om.MPlug:
     else:
         raise TypeError(f'The type of {attribute} ({type(attribute)}) is not supported')
 
+# ToDo: implement __new__ to create a MultiAttr when MPlug.isArray instead of the actual class
 class Attribute(MayaObject):
     _mfn_class = om.MFnAttribute
     _mfn_constant = om.MFn.kAttribute
@@ -65,12 +66,11 @@ class Attribute(MayaObject):
         self._attr_type = None
 
     def __getattr__(self, item) -> Attribute:
-        return self.attr(item)
-
-    def __getitem__(self, item):
-        plug = self.api_mplug().elementByLogicalIndex(item)
-        handle = om.MObjectHandle(plug.attribute())
-        return self._factory(MPlug=plug, MObjectHandle=handle, node=self.node())
+        if not self.has_attr(item):
+            raise RuntimeError(f'no method or attribute named {item}')
+        attr = self.attr(item)
+        setattr(self, item, attr)
+        return attr
 
     # API STUFF
     def api_mfn(self) -> om.MFnBase:
@@ -78,6 +78,9 @@ class Attribute(MayaObject):
 
     def api_mplug(self) -> om.MPlug:
         return self._api_input['MPlug']
+
+    def api_object(self) -> om.MPlug:
+        return self.api_mplug()
 
     @classmethod
     def get_build_data_from_name(cls, name:str) -> Dict[str, TMayaObjectApi]:
@@ -93,7 +96,7 @@ class Attribute(MayaObject):
 
     # IDENTITY
     @recycle_mplug
-    def name(self, include_node=True, alias=False, full_attr_path=False, long_names=True, mplug:om.MPlug=None) -> str:
+    def name(self, include_node=True, full_dag_path=False, alias=False, full_attr_path=False, long_names=True, mplug:om.MPlug=None) -> str:
         """
         Generates the name of the attribute.
         The output can include the node name, use aliases, provide the full attribute path,
@@ -113,9 +116,13 @@ class Attribute(MayaObject):
         Returns:
             str: The computed plug name as a string, based on the specified parameters.
         """
-        plug_name = mplug.partialName(includeNodeName=include_node, useAlias=alias,
-                                               useFullAttributePath=full_attr_path, useLongNames=long_names)
-        return plug_name
+        name = ''
+        if include_node or full_dag_path:
+            name = f'{self.node().name(full_dag_path=full_dag_path)}.'
+        plug_name = mplug.partialName(includeNodeName=False, useAlias=alias,
+                                      useFullAttributePath=full_attr_path, useLongNames=long_names)
+        name += plug_name
+        return name
 
     @recycle_mfn
     def attr_name(self, long_name:bool=True, mfn:om.MFnAttribute=None) -> str:
@@ -746,6 +753,13 @@ class QuantifiableAttribute(Attribute):
             None
         """
         ...
+
+class MultiAttribute(Attribute):
+    def __getitem__(self, item):
+        plug = self.api_mplug().elementByLogicalIndex(item)
+        handle = om.MObjectHandle(plug.attribute())
+        return self._factory(MPlug=plug, MObjectHandle=handle, node=self.node())
+
 
 @dataclass
 class AttrData:

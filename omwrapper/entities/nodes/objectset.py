@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Union, Tuple, Iterable, List
+from __future__ import annotations
+
+from typing import Union, Tuple, List
 
 from maya.api import OpenMaya as om
 
@@ -6,8 +8,7 @@ from omwrapper.api.utilities import name_to_api, TApi
 from omwrapper.entities.nodes.dependency import DependNode
 from omwrapper.pytools import Iterator
 
-if TYPE_CHECKING:
-    from omwrapper.entities.base import MayaObject, recycle_mfn
+from omwrapper.entities.base import MayaObject, recycle_mfn
 
 TSetMemberInput = Union[str, MayaObject, Tuple[om.MDagPath, om.MObject], om.MDagPath, om.MObject, om.MPlug]
 TSetMember = Union[om.MObject, Tuple[om.MDagPath, om.MObject], om.MPlug]
@@ -115,7 +116,7 @@ class ObjectSet(DependNode):
         if isinstance(member, str):
             return self._process_member(name_to_api(member))
         elif isinstance(member, MayaObject):
-            return member.api_mobject()
+            return member.api_object()
         elif isinstance(member, tuple):
             if len(member) != 2:
                 raise ValueError('Tuples must have strictly 2 elements')

@@ -1,9 +1,10 @@
 import inspect
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import Union, Dict, Callable
+from typing import Union, Dict, Callable, Any
 
 from maya.api import OpenMaya as om
+import maya.OpenMaya as om1
 
 from omwrapper.api import apiundo
 from omwrapper.api.modifiers.custom import ProxyModifier
@@ -31,7 +32,7 @@ class MayaObject(ABC):
     def __str__(self):
         name = self.name()
         if unique_object_exists(name):
-            return self.name()
+            return name
         else:
             return self.name(full_dag_path=True)
 
@@ -71,6 +72,17 @@ class MayaObject(ABC):
 
         """
         return self._api_input['MObjectHandle']
+
+    def api_object(self) -> Any:
+        """
+        Get the default api 2.0 object that represent this object.
+
+        Returns:
+            Any: return type varies depending on the type of object. Attributes will return an MPlug, while nodes will
+             return an MObject and components a tuple made of an MDagPath and an MObject
+
+        """
+        return self.api_mobject()
 
     @abstractmethod
     def name(self, full_dag_path:bool=False) -> str:
@@ -118,10 +130,10 @@ def recycle_mfn(func:Callable):
         bound_kwargs = bound_args.arguments
 
         inst = bound_kwargs['self']
-        mfn = kwargs.get('mfn', None)
+        mfn = bound_kwargs.get('mfn', None)
         if mfn is None:
-            kwargs['mfn'] = inst.api_mfn()
-        result = func(*args, **kwargs)
+            bound_kwargs['mfn'] = inst.api_mfn()
+        result = func(**bound_kwargs)
         return result
     return wrapped
 

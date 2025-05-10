@@ -5,7 +5,7 @@ from maya.api import OpenMaya as om
 from omwrapper.api.modifiers.base import AbstractModifier
 from omwrapper.constants import DataType
 
-
+# FixMe: there's something wrong with the inheritance here
 class DGModifier(AbstractModifier, om.MDGModifier):
     def doIt(self) -> None:
         om.MDGModifier.doIt(self)
@@ -149,7 +149,7 @@ class DGModifier(AbstractModifier, om.MDGModifier):
         self.disconnect(s_plug, d_plug)
 
 
-class DagModifier(DGModifier):
+class DagModifier(om.MDagModifier, DGModifier):
     def create_node(self, node_type:str, name:str=None, parent:om.MObject=om.MObject.kNullObj) -> om.MObject:
         """
         create a node of the given Dag type
