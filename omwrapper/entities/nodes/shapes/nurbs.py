@@ -7,8 +7,9 @@ from maya.api import OpenMaya as om
 
 from omwrapper.api import apiundo
 from omwrapper.api.modifiers.maya import DagModifier
-from omwrapper.constants import DataType
+from omwrapper.constants import DataType, ComponentType
 from omwrapper.entities.base import recycle_mfn, undoable_proxy_wrap
+from omwrapper.entities.factory import ComponentAccessor
 from omwrapper.entities.nodes.shapes.base import GeometryShape, TPointsSequence
 
 TKNotsSequence = Union[om.MDoubleArray, Iterable[float]]
@@ -306,6 +307,11 @@ class NurbsCurve(GeometryShape):
         data['knots'] = list(data['knots'])
         return json.dumps(data, sort_keys=True, indent=4)
 
+    @property
+    def cv(self):
+        return ComponentAccessor(dimension=1, length=self.cv_count,
+                                 comp_type=ComponentType.CURVE_CV, geometry=self.api_dagpath())
+
 class NurbsSurface(GeometryShape):
     _mfn_class = om.MFnNurbsSurface
     _mfn_constant = om.MFn.kNurbsSurface
@@ -357,8 +363,7 @@ class NurbsSurface(GeometryShape):
             None
 
         """
-        u, v = index
-        mfn.setCVPosition(index, point, space=space)
+        mfn.setCVPosition(*index, point, space=space)
         mfn.updateSurface()
 
     @recycle_mfn
@@ -432,36 +437,36 @@ class NurbsSurface(GeometryShape):
 
     @property
     def u_cv_count(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.numCVsInU
 
     @property
     def v_cv_count(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.numCVsInV
 
     @property
     def uv_cv_count(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         u = mfn.numCVsInU
         v = mfn.numCVsInV
         return u, v
 
     @property
     def cv_count(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         u = mfn.numCVsInU
         v = mfn.numCVsInV
         return u * v
 
     @property
     def u_form(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.formInU
 
     @property
     def v_form(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.formInV
 
     @property
@@ -496,30 +501,35 @@ class NurbsSurface(GeometryShape):
 
     @property
     def u_knot_count(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.numKnotsInU
 
     @property
     def v_knot_count(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.numKnotsInV
 
     @property
     def u_span_count(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.numSpansInU
 
     @property
     def v_span_count(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.numSpansInV
 
     @property
     def u_knot_domain(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.knotDomainInU
 
     @property
     def v_knot_domain(self):
-        mfn = self.apimfn()
+        mfn = self.api_mfn()
         return mfn.knotDomainInV
+
+    @property
+    def cv(self):
+        return ComponentAccessor(dimension=2, length=self.uv_cv_count,
+                                 comp_type=ComponentType.SURFACE_CV, geometry=self.api_dagpath())

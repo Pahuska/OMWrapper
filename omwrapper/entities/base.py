@@ -137,7 +137,7 @@ def recycle_mfn(func:Callable):
         return result
     return wrapped
 
-def undoable_proxy_wrap(get_method, set_method):
+def undoable_proxy_wrap(get_method:Callable, set_method:Callable, undo_kwargs_override:dict=None):
     """
     A decorator that helps to wrap non-undoable methods into a ProxyModifier to make them undoable. This is typically
     used for actions that can't be easily made undoable with a classic modifier. The decorator requires a pair of get
@@ -153,6 +153,7 @@ def undoable_proxy_wrap(get_method, set_method):
     Args:
         get_method (Callable): the method used to get the current value
         set_method (Callable): the method used to set the new value, and set the old value when undoing
+        undo_kwargs_override (dict, optional): optional dictionary of keyword args to pass to set_method when undoing
     """
     def decorator(func):
         @wraps(func)
@@ -163,6 +164,8 @@ def undoable_proxy_wrap(get_method, set_method):
             set_signature = inspect.signature(set_method)
             do_bound_args = set_signature.bind(*args, **kwargs)
             do_bound_args.apply_defaults()
+            #ToDo: maybe copy the arguments dict, and pop parameters that are exclusively positional, put them in a
+            # separate variable called do_args, and the remaining elements in do_kwargs
             do_kwargs = do_bound_args.arguments
 
             # Get the signature of get_method and fill it with the matching kwargs from set_method, then get the current
@@ -175,6 +178,8 @@ def undoable_proxy_wrap(get_method, set_method):
             #  note : The first parameter should be the instance (self)
             k = get_by_index(do_kwargs, 1)
             undo_kwargs = do_kwargs.copy()
+            if undo_kwargs_override is not None:
+                undo_kwargs.update(undo_kwargs_override)
             undo_kwargs[k] = old_value
 
             # Create the ProxyModifier and execute it, then register it for undoing

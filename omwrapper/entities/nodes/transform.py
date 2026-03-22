@@ -14,6 +14,13 @@ class Transform(DagNode):
     _mfn_class = om.MFnTransform
     _mfn_constant = om.MFn.kTransform
 
+    def __getattr__(self, item):
+        try:
+            return super().__getattr__(item)
+        except AttributeError:
+            attr = self.delegate_attr(item)
+            return attr
+
     def api_mfn(self) -> om.MFnTransform:
         return super().api_mfn()
 
@@ -43,8 +50,7 @@ class Transform(DagNode):
             return result
         elif check_shape:
             for shape in self.get_shapes():
-                if shape.has_attr(name):
-                    return True
+                return shape.has_attr(name)
         return False
 
     def attr(self, name:str, check_shape:bool=True):
@@ -54,8 +60,18 @@ class Transform(DagNode):
             for shape in self.get_shapes():
                 if shape.has_attr(name):
                     return shape.attr(name)
+            else:
+                raise AttributeError(f'No attribute named {name}')
         else:
-            raise ValueError(f'No attribute named {name}')
+            raise AttributeError(f'No attribute named {name}')
+
+    def delegate_attr(self, name:str):
+        for shape in self.get_shapes():
+            try:
+                return getattr(shape, name)
+            except AttributeError:
+                ...
+        raise AttributeError(f'No attribute named {name}')
 
     @recycle_mfn
     def set_matrix_(self, matrix:Union[om.MMatrix, om.MTransformationMatrix], space:int=om.MSpace.kObject,

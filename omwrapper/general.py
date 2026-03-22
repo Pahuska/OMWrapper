@@ -3,9 +3,10 @@ from typing import Union, List
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from omwrapper.api.modifiers.custom import ProxyModifier
 from omwrapper.api.modifiers.maya import DagModifier, DGModifier
 from omwrapper.api.utilities import name_to_api
-from omwrapper.entities.base import MayaObject
+from omwrapper.entities.base import MayaObject, undoable_proxy_wrap
 from omwrapper.entities.factory import PyObject
 from omwrapper.entities.registration import pyobject
 from omwrapper.api import apiundo
@@ -78,3 +79,43 @@ def selected() -> List[MayaObject]:
     """
     return factory.from_selection_list(om.MGlobal.getActiveSelectionList())
 
+#ToDo : go for *args instead of objects:List
+def select_(*args:Union[MayaObject, str], add:bool=False, deselect:bool=False,
+           toggle:bool=False, clear:bool=False):
+    current_sel = om.MGlobal.getActiveSelectionList()
+    old_sel = om.MSelectionList()
+    old_sel.copy(current_sel)
+
+    # If no objects are provided and clear is True, then we set the current selection to an empty list
+    if not len(args) and clear:
+        empty_list = om.MSelectionList()
+        om.MGlobal.setActiveSelectionList(empty_list)
+
+    # Make sure the object provided is an iterable, then convert it to a MSelectionList
+    sel = om.MSelectionList()
+    for obj in args:
+        if isinstance(obj, om.MSelectionList):
+            sel.merge(obj)
+        else:
+            if isinstance(obj, MayaObject):
+                sel.add(obj._get_selectable_object())
+            else:
+                sel.add(obj)
+
+    # Merge selection lists according to the specified method
+    if add:
+        current_sel.merge(sel, om.MSelectionList.kMergeNormal)
+    elif deselect:
+        current_sel.merge(sel, om.MSelectionList.kRemoveFromList)
+    elif toggle:
+        current_sel.merge(sel, om.MSelectionList.kXORWithList)
+    else:
+        current_sel = sel
+
+    om.MGlobal.setActiveSelectionList(current_sel)
+
+#FixMe: does not work because we can't trick *args to be passed as a kwarg
+@undoable_proxy_wrap(selected, select_, {'add':False, 'deselect':False, 'toggle':False, 'clear':False})
+def select(*args:Union[MayaObject, str], add:bool=False, deselect:bool=False,
+           toggle:bool=False, clear:bool=False):
+    ...

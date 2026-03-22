@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from abc import ABC
-from typing import overload, Tuple, Union, Callable, Any, TYPE_CHECKING
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from itertools import product
+from typing import overload, Tuple, Union, Callable, Any, TYPE_CHECKING, List
+import inspect
 
 from maya.api import OpenMaya as om
 
-from omwrapper.api.utilities import name_to_api
-from omwrapper.constants import ObjectType, AttributeType
+from omwrapper.api.utilities import name_to_api, prod_list
+from omwrapper.constants import ObjectType, AttributeType, ComponentType, AttrType, DataType
 
 if TYPE_CHECKING:
     from enum import Enum
+    from omwrapper.entities.attributes.base import AttrData
 
 class PyObject:
     """
@@ -49,7 +53,6 @@ class PyObject:
         Returns:
             MayaObject: a MayaObject instance representing the given object
         """
-        #ToDo: make sure this is actually for Dag nodes. I cant remember. It might actually be components
         ...
 
     @overload
@@ -163,6 +166,12 @@ class PyObject:
                 raise NotImplementedError(f'{object_type} is not yet implemented')
             _class = selector(**kwargs)
 
+            try:
+                _class = user_class_manager.get_user_class(_class, mobj)
+            except ValueError:
+                ...
+            #ToDo: test this ^
+
             return _class(**kwargs)
 
     def from_selection_list(self, sel:om.MSelectionList):
@@ -187,6 +196,86 @@ class PyObject:
                 raise TypeError(f'Unable to find a matching constructor for {it.getStrings()}')
             it.next()
 
+class ComponentAccessor:
+    def __init__(self, dimension:int, length:Union[int, list, tuple], comp_type:ComponentType, geometry:om.MDagPath):
+        self.dimension = dimension
+        if not isinstance(length, (tuple, list)):
+            self.length = [length]
+        else:
+            self.length = length
+
+        assert len(self.length) == self.dimension, 'Length parameter must match the dimension'
+        self.id_array = []
+        self.comp_type = comp_type
+        self.geometry = geometry
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, item):
+        # Make sure we haven't already reached the maximum dimension (shouldn't happen anyway)
+        assert len(self.id_array) <= self.dimension, f'Cannot slice more than {self.dimension} times'
+
+        array = om.MIntArray()
+        if not isinstance(item, (tuple, list, om.MIntArray)):
+            item = [item]
+
+        current_dim = len(self.id_array)
+        for i in item:
+            if isinstance(i, int):
+                array.append(i)
+            elif isinstance(i, slice):
+                start = i.start
+                stop = i.stop
+                step = i.step
+
+                if start is None:
+                    start = 0
+                if stop is None:
+                    stop = self.length[current_dim] - 1
+                if step  is None:
+                    step = 1
+
+                if step > 0:
+                    stop += 1
+                else:
+                    stop -= 1
+
+                for x in range(start, stop, step):
+                    array.append(x)
+        self.id_array.append(array)
+
+        # Keep returning itself until we've processed all dimensions, only then can we build the component
+        if len(self.id_array) == self.dimension:
+            return self.build()
+        else:
+            return self
+
+    def is_valid(self):
+        return len(self.id_array) == self.dimension
+
+    def compute_elements(self):
+        if self.dimension == 1:
+            return self.id_array[0]
+        else:
+            return list(product(*self.id_array))
+
+    def build(self):
+        elements = self.compute_elements()
+        mfn = self._get_comp_class()(self.geometry.node())
+        mfn.create(ComponentType.to_mfn(self.comp_type))
+        mfn.addElements(elements)
+        factory = PyObject()
+        component = factory(MDagPath=self.geometry, MObjectHandle=om.MObjectHandle(mfn.object()))
+        return component
+
+    def _get_comp_class(self):
+        if self.dimension == 1:
+            return om.MFnSingleIndexedComponent
+        elif self.dimension == 2:
+            return om.MFnDoubleIndexedComponent
+        elif self.dimension == 3:
+            return om.MFnTripleIndexedComponent
 
 class BaseSelector(ABC):
     def __init__(self, object_type:ObjectType):
@@ -222,3 +311,239 @@ class AttributeSelector(BaseSelector):
             return self._registry.get(self.MULTI)
         else:
             return super().get_class(**kwargs)
+
+class AttrFactory:
+    def __new__(cls, data:AttrData) -> om.MFnAttribute:
+        """
+        Factory class responsible for creating the appropriate function set (MFnAttribute and subclasses) from the data
+        that were provided.
+
+        We first find the right function set.
+        The next step is to call the create function to actually create the attribute. Different types of attribute will
+        have different way to call the create function.
+        Finally, we do some post-processing, like adding fields to ENUM attributes, setting the min and max, etc...
+
+        Args:
+            data (AttrData): the data to build the MFn from
+
+        Returns:
+            MFnAttribute: the new MFnAttribute instance, created and ready to be added to a node
+        """
+
+        # CREATE
+        # Get the proper function set depending on the AttrType
+        mfn = AttrType.to_function_set(data.attr_type)()
+
+        # Call the create appropriate function. Special cases like COLOR and FLOAT3 have a different create function
+        if data.attr_type == AttrType.NUMERIC and data.data_type in (DataType.COLOR, DataType.FLOAT3):
+            if data.data_type == DataType.COLOR:
+                mfn.createColor(*data.create_args)
+            elif data.data_type == DataType.FLOAT3:
+                mfn.createPoint(*data.create_args)
+        else:
+            mfn.create(*data.create_args)
+
+        # POST PROCESS
+        # For the ENUM type we must add the fields one by one
+        # Then we set the default value, which can be an int or a string
+        if data.attr_type == AttrType.ENUM:
+            for name, value in data.enum_fields:
+                mfn.addField(name, value)
+            dv = data.default_value
+            if isinstance(dv, str):
+                mfn.setDefaultByName(dv)
+            else:
+                # if it's not a string, assume it's an int
+                mfn.default = dv
+
+        # For the UNIT and NUMERIC type, set the bounds and soft bounds if any were provided
+        if data.attr_type in (AttrType.UNIT, AttrType.NUMERIC):
+            if data.min is not None:
+                mfn.setMin(data.min)
+            if data.max is not None:
+                mfn.setMax(data.max)
+            if data.soft_min is not None:
+                mfn.setSoftMin(data.soft_min)
+            if data.soft_max is not None:
+                mfn.setSoftMax(data.soft_max)
+
+        # For the STRING type, apply the optional as_filename parameter
+        if data.attr_type == AttrType.STRING:
+            mfn.usedAsFilename = data.as_filename
+
+        mfn.array = data.multi
+        if data.multi:
+            mfn.indexMatters = data.index_matters
+        mfn.keyable = data.keyable
+        mfn.readable = data.readable
+
+        return mfn
+
+@dataclass
+class UserClassData:
+    user_class:type
+    parent_class:type
+    validator:Callable
+
+class UserClassManager:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super().__new__(cls)
+            cls._instance._registry = {}
+        return cls._instance
+
+    def __init__(self):
+        self._by_user_class = {}
+        self._by_parent_class = {}
+
+    def register(self, user_class:type, validator:Union[Callable, str]):
+        if isinstance(validator, str):
+            validator = getattr(user_class, validator)
+
+        # Create a Data object for this class
+        parent_cls = self.get_parent_class(user_class)
+        data = UserClassData(user_class=user_class, parent_class=parent_cls, validator=validator)
+
+        # Check if there is already an entry for this parent class. If not, create an empty one
+        if parent_cls not in self._by_parent_class:
+            self._by_parent_class[parent_cls] = []
+
+        # Remove duplicates (classes with the same name and module) to keep the registry clean
+        for each_data in self._by_parent_class[parent_cls]:
+            other_cls = each_data.user_class
+            if other_cls.__name__ == user_class.__name__ and other_cls.__module__ == user_class.__module__:
+                self.unregister(other_cls)
+
+        # Add the UserClass data to each dict
+        self._by_parent_class[parent_cls].append(data)
+        self._by_user_class[user_class] = data
+
+    @classmethod
+    def get_parent_class(cls, user_class:type):
+
+        package = inspect.getmodule(cls).__package__
+        for each in inspect.getmro(user_class):
+            if each.__module__.startswith(package) and each is not AbstractUserClass:
+                parent_cls = each
+                return parent_cls
+        raise TypeError(f'{user_class} is not a subclass of an OMWrapper entity')
+
+    def unregister(self, user_class:type):
+        try:
+            user_class_data = self._by_user_class.pop(user_class)
+        except KeyError:
+            raise ValueError(f'{user_class} was not registered as a user class')
+
+        self._by_parent_class[user_class_data.parent_class].remove(user_class_data)
+
+    def get_user_class(self, parent_class:type, obj:Union[str, om.MObject]):
+        if parent_class in self._by_parent_class:
+            data = self._by_parent_class[parent_class]
+            if isinstance(obj, str):
+                obj = name_to_api(obj, as_mobject=True)
+
+            for d in data:
+                if d.validator(obj):
+                    return d.user_class
+        raise ValueError(f'Cannot find a {parent_class.__name__} subclass for the provided object')
+
+    def get_user_class_data(self, user_class:type):
+        data = self._by_user_class.get(user_class)
+        if data is None:
+            raise ValueError(f'No data found for class {user_class.__name__}')
+        return data
+
+    def has_base_class(self, parent_class):
+        return parent_class in self._by_parent_class
+
+    def has_user_class(self, user_class):
+        return user_class in self._by_user_class
+
+user_class_manager = UserClassManager()
+pyobject = PyObject()
+
+class AbstractUserClass(ABC):
+    NODE_TYPE: str
+    BASE_TYPE: str
+
+    @classmethod
+    @abstractmethod
+    def validator(cls, obj:om.MObject) -> bool:
+        """
+        The validation process to verify if a given node is a valid choice for this class
+
+        Args:
+            obj (MObject): the object to test
+
+        Returns:
+            bool: True if the object is valid. False otherwise
+
+        """
+
+    @classmethod
+    @abstractmethod
+    def _pre_create(cls, *args, **kwargs) -> Tuple[dict, dict]:
+        """
+        Operations that should happen before the node creation. Essentially, processing the parameters and splitting
+        them to send them toward the create and post_create methods
+
+        Subclasses may override this according to their needs
+
+        Returns:
+            List: Two dicts, the first one will be passed to _create and the second to _post_create
+
+        """
+        ...
+
+
+    @classmethod
+    @abstractmethod
+    def _create(cls, **kwargs) -> Union[str, om.MObject]:
+        """
+        The actual node creation. There shouldn't be much more here.
+
+        Subclasses may override this according to their needs
+
+        Args:
+            **kwargs: parameters issued from the _pre_create method
+
+        Returns:
+            str, MObject: The node that has been created
+
+        """
+        ...
+
+    @classmethod
+    @abstractmethod
+    def _post_create(cls, node:Union[str, om.MObject], **kwargs):
+        """
+        Operations that should happen after the node creation
+
+        Subclasses may override this according to their needs
+
+        Args:
+            node: the node created in the _create method
+            **kwargs: the parameters processed in the _pre_create method
+
+        Returns:
+
+        """
+        ...
+
+    @classmethod
+    def create(cls, *args, **kwargs):
+        """
+        The whole node creation process
+
+        Returns:
+            MayaObject: the newly created node
+
+        """
+        pre, post = cls._pre_create(*args, **kwargs)
+        node = cls._create(**pre)
+        cls._post_create(node, **post)
+
+        return pyobject(node)
+

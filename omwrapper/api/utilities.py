@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Union, Tuple, Any
+from typing import Union, Tuple, Any, List
 
 from maya.api import OpenMaya as om
 from maya import OpenMaya as om1
@@ -239,3 +239,9 @@ def set_plug_value(plug:om.MPlug, value:Any, data_type:DataType=None):
         if not isinstance(value, om.MTime):
             value = DataType.to_time(value)
         plug.setMTime(value)
+
+def prod_list(lst:List[int]):
+    count = 1
+    for n in lst:
+        count *= n
+    return count

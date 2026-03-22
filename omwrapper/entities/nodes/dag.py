@@ -8,7 +8,7 @@ from omwrapper.api.utilities import name_to_api
 from omwrapper.entities.base import TMayaObjectApi, recycle_mfn
 from omwrapper.entities.nodes.dependency import DependNode
 
-
+#ToDo: addChild and setParent
 class DagNode(DependNode):
     _mfn_class = om.MFnDagNode
     _mfn_constant = om.MFn.kDagNode
@@ -17,15 +17,15 @@ class DagNode(DependNode):
         return self._api_input['MDagPath']
 
     def api_mfn(self) -> om.MFnDagNode:
-        self._mfn_class(self.api_dagpath())
+        return self._mfn_class(self.api_dagpath())
 
     @classmethod
     def get_build_data_from_name(cls, name:str) -> Dict[str, TMayaObjectApi]:
-        mobj = name_to_api(name)
-        if not isinstance(mobj, om.MObject):
-            raise TypeError(f'{name} is not a Dependency Node')
+        dag = name_to_api(name)
+        if not isinstance(dag, om.MDagPath):
+            raise TypeError(f'{name} is not a DAG Node')
 
-        return {'MObjectHandle': om.MObjectHandle(mobj)}
+        return {'MDagPath': dag, 'MObjectHandle': om.MObjectHandle(dag.node())}
 
     def name(self, full_dag_path:bool=False) -> str:
         mfn = om.MFnDagNode(self.api_mobject())

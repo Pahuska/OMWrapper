@@ -15,7 +15,7 @@ from omwrapper.api.modifiers.maya import DGModifier
 from omwrapper.constants import AttrType, DataType
 from omwrapper.entities.attributes.base import AttrData, AttrContext
 from omwrapper.entities.nodes.dependency import DependNode
-from omwrapper.general import pyobject, create_node
+from omwrapper.general import pyobject, create_node, select_
 
 cmds.file(new=True, force=True)
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 #NODE MANIPULATION
 
 node = create_node('transform', name='node_a') #type: Transform
-child = create_node('transform', name='child_a', parent=node)
+child = create_node('transform', name='child_a', parent=node) #type: Transform
 node.rename('NodeA')
 
 # ATTRIBUTE CREATION
@@ -42,7 +42,7 @@ string_c = AttrData('string_c', attr_type=AttrType.STRING, default_value='coucou
 
 vector_d = AttrData('vector_d', data_type=DataType.FLOAT3, default_value=om.MVector.kXaxisVector, keyable=True)
 
-print(node.has_attr('translateW'))
+print(f'{node} has attr translateW : {node.has_attr("translateW")}')
 
 attributes = [ikfk, compound, float_a, enum_b,string_c, vector_d]
 
@@ -62,7 +62,8 @@ object_set = pyobject(new_set) #type: ObjectSet
 object_set.add_member(py_node)
 object_set.add_member(node.ikfk)
 
-cmds.select(node, child)
-
 n = node.float_a.name()
-print(n)
+
+child.add_attr('ikfk', data_type=DataType.BOOL, default_value=True, keyable=True)
+
+select_(node, child)

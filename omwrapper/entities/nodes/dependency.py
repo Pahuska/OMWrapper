@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, TYPE_CHECKING, Union
+from typing import Dict, TYPE_CHECKING, Union, overload
 
 from maya.api import OpenMaya as om
 
@@ -8,12 +8,14 @@ from omwrapper.api.modifiers.base import TModifier, add_modifier
 from omwrapper.api.modifiers.custom import ProxyModifier
 from omwrapper.api.modifiers.maya import DGModifier
 from omwrapper.api.utilities import name_to_api
-from omwrapper.entities.attributes.base import AttributeHandler, AttrData, AttrFactory
+from omwrapper.entities.attributes.base import AttributeHandler, AttrData
+from omwrapper.entities.factory import AttrFactory
 from omwrapper.entities.base import MayaObject, TMayaObjectApi, recycle_mfn
 from omwrapper.api import apiundo
 
 if TYPE_CHECKING:
     from omwrapper.entities.attributes.base import Attribute
+
 
 class DependNode(MayaObject):
     _mfn_class = om.MFnDependencyNode
@@ -24,8 +26,6 @@ class DependNode(MayaObject):
         self._attribute_handler = AttributeHandler(self.api_mobject())
 
     def __getattr__(self, item) -> Attribute:
-        if not self.has_attr(item):
-            raise RuntimeError(f'no method or attribute named {item}')
         attr = self.attr(item)
         setattr(self, item, attr)
         return attr
@@ -39,11 +39,11 @@ class DependNode(MayaObject):
 
     @classmethod
     def get_build_data_from_name(cls, name:str) -> Dict[str, TMayaObjectApi]:
-        dag = name_to_api(name)
-        if not isinstance(dag, om.MDagPath):
-            raise TypeError(f'{name} is not a DAG Node')
+        mobj = name_to_api(name)
+        if not isinstance(mobj, om.MObject):
+            raise TypeError(f'{name} is not a Dependency Node')
 
-        return {'MDagPath':dag, 'MObjectHandle': om.MObjectHandle(dag.node())}
+        return {'MObjectHandle': om.MObjectHandle(mobj)}
 
     @recycle_mfn
     def rename_(self, name:str, mfn:om.MFnDependencyNode) -> str:
@@ -92,7 +92,18 @@ class DependNode(MayaObject):
         mfn = om.MFnDependencyNode(self.api_mobject())
         return mfn.hasAttribute(name)
 
+    #ToDo: can we overload this to either pass a AttrData or a set of kwargs that will be made into a AttrData within
+    # the method ?
+
+    @overload
     def add_attr(self, data:AttrData, _modifier:DGModifier=None):
+        ...
+    @overload
+    def add_attr(self, *args, _modifier:DGModifier=None, **kwargs):
+        ...
+
+    #FixMe: we can't have data here as a parameter, we gotta look for it in args or kwargs
+    def add_attr(self, *args, _modifier:DGModifier=None, **kwargs):
         """
         Adds a new attribute to this node, based on the provided AttrData. Search AttrData's doc for more information.
         An optional _modifier can be passed. In that case it is up to the user to trigger the doIt function, and then
@@ -138,6 +149,13 @@ class DependNode(MayaObject):
             node.attribute_handler().purge()    # Purging the buffer of the attribute_handler
             apiundo.commit(undo=mod.undoIt, redo=mod.doIt)  # Adding this operation to the undo queue (optional)
         """
+        if len(args) and isinstance(args[0], AttrData):
+            data = args[0]
+        elif 'data' in kwargs:
+            data = kwargs['data']
+        else:
+            data = AttrData(*args, **kwargs)
+
         fn = AttrFactory(data)
 
         # Make sure the name of the attribute is not already in use on this node

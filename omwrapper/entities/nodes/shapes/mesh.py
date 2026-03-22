@@ -1,6 +1,8 @@
 from maya.api import OpenMaya as om
 
+from omwrapper.constants import ComponentType, DataType
 from omwrapper.entities.base import recycle_mfn, undoable_proxy_wrap
+from omwrapper.entities.factory import ComponentAccessor
 from omwrapper.entities.nodes.shapes.base import GeometryShape, TPointsSequence
 
 
@@ -50,7 +52,7 @@ class Mesh(GeometryShape):
             None
 
         """
-        mfn.setPoint(index, point, space=space)
+        mfn.setPoint(index, space=space)
 
     @recycle_mfn
     @undoable_proxy_wrap(get_point, set_point_)
@@ -134,3 +136,18 @@ class Mesh(GeometryShape):
     @property
     def uv_set_count(self):
         return self.api_mfn().numUVSets
+
+    @property
+    def vtx(self):
+        return ComponentAccessor(dimension=1, length=self.vertex_count,
+                                  comp_type=ComponentType.VERTEX, geometry=self.api_dagpath())
+
+    @property
+    def f(self):
+        return ComponentAccessor(dimension=1, length=self.vertex_count,
+                                  comp_type=ComponentType.FACE, geometry=self.api_dagpath())
+
+    @property
+    def e(self):
+        return ComponentAccessor(dimension=1, length=self.vertex_count,
+                                 comp_type=ComponentType.EDGE, geometry=self.api_dagpath())

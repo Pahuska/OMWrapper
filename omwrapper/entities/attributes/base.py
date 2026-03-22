@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import wraps
-from typing import Dict, List, Union, Any, Optional, Iterable, Tuple, TYPE_CHECKING
+from typing import Dict, List, Union, Any, Optional, Iterable, Tuple, TYPE_CHECKING, ParamSpec, Callable
 
 from maya.api import OpenMaya as om
 
@@ -53,7 +53,6 @@ def _as_mplug(attribute:TConnect) -> om.MPlug:
     else:
         raise TypeError(f'The type of {attribute} ({type(attribute)}) is not supported')
 
-# ToDo: implement __new__ to create a MultiAttr when MPlug.isArray instead of the actual class
 class Attribute(MayaObject):
     _mfn_class = om.MFnAttribute
     _mfn_constant = om.MFn.kAttribute
@@ -501,9 +500,6 @@ class Attribute(MayaObject):
         if mplug.isArray and mplug.attribute().hasFn(om.MFn.kTypedAttribute) and not mplug.isDynamic:
             mplug = mplug.elementByLogicalIndex(0)
 
-        #FixMe: we might need to put this directly in the api_mplug method. What's gonna happen if I try to "get" an
-        # attribute like worldMatrix ?
-
         _modifier.connect_(s_plug=mplug, d_plug=_as_mplug(destination), force=force, next_available=next_available)
 
     @recycle_mplug
@@ -804,10 +800,6 @@ class MultiAttribute(Attribute):
             self._get_item(idx).set(value=v, data_type=data_type, mplug=mplug,
                                     _modifier=_modifier)
 
-
-
-
-
 @dataclass
 class AttrData:
     """
@@ -928,73 +920,6 @@ class AttrData:
             enum_fields.append((name, value))
 
         return enum_fields
-
-class AttrFactory:
-    def __new__(cls, data:AttrData) -> om.MFnAttribute:
-        """
-        Factory class responsible for creating the appropriate function set (MFnAttribute and subclasses) from the data
-        that were provided.
-
-        We first find the right function set.
-        The next step is to call the create function to actually create the attribute. Different types of attribute will
-        have different way to call the create function.
-        Finally, we do some post-processing, like adding fields to ENUM attributes, setting the min and max, etc...
-
-        Args:
-            data (AttrData): the data to build the MFn from
-
-        Returns:
-            MFnAttribute: the new MFnAttribute instance, created and ready to be added to a node
-        """
-
-        # CREATE
-        # Get the proper function set depending on the AttrType
-        mfn = AttrType.to_function_set(data.attr_type)()
-
-        # Call the create appropriate function. Special cases like COLOR and FLOAT3 have a different create function
-        if data.attr_type == AttrType.NUMERIC and data.data_type in (DataType.COLOR, DataType.FLOAT3):
-            if data.data_type == DataType.COLOR:
-                mfn.createColor(*data.create_args)
-            elif data.data_type == DataType.FLOAT3:
-                mfn.createPoint(*data.create_args)
-        else:
-            mfn.create(*data.create_args)
-
-        # POST PROCESS
-        # For the ENUM type we must add the fields one by one
-        # Then we set the default value, which can be an int or a string
-        if data.attr_type == AttrType.ENUM:
-            for name, value in data.enum_fields:
-                mfn.addField(name, value)
-            dv = data.default_value
-            if isinstance(dv, str):
-                mfn.setDefaultByName(dv)
-            else:
-                # if it's not a string, assume it's an int
-                mfn.default = dv
-
-        # For the UNIT and NUMERIC type, set the bounds and soft bounds if any were provided
-        if data.attr_type in (AttrType.UNIT, AttrType.NUMERIC):
-            if data.min is not None:
-                mfn.setMin(data.min)
-            if data.max is not None:
-                mfn.setMax(data.max)
-            if data.soft_min is not None:
-                mfn.setSoftMin(data.soft_min)
-            if data.soft_max is not None:
-                mfn.setSoftMax(data.soft_max)
-
-        # For the STRING type, apply the optional as_filename parameter
-        if data.attr_type == AttrType.STRING:
-            mfn.usedAsFilename = data.as_filename
-
-        mfn.array = data.multi
-        if data.multi:
-            mfn.indexMatters = data.index_matters
-        mfn.keyable = data.keyable
-        mfn.readable = data.readable
-
-        return mfn
 
 class AttributeHandler:
     def __init__(self, node:om.MObject):
@@ -1182,3 +1107,5 @@ class AttrContext:
         if self.undo:
             apiundo.commit(undo=self.modifier.undoIt, redo=self.modifier.doIt)
         self.handler.purge()
+
+#ToDo: move the utility stuff in a utilities module

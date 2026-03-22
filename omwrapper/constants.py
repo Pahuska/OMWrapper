@@ -62,7 +62,12 @@ class DagNodeType(MFnMixin, Enum):
     LATTICE_SHAPE = om.MFn.kLattice
 
 class ComponentType(MFnMixin, Enum):
-    ...
+    VERTEX = om.MFn.kMeshVertComponent
+    FACE = om.MFn.kMeshPolygonComponent
+    EDGE = om.MFn.kMeshEdgeComponent
+    CURVE_CV = om.MFn.kCurveCVComponent
+    SURFACE_CV = om.MFn.kSurfaceCVComponent
+    LATTICE_POINT = om.MFn.kLatticeComponent
 
 TSubtypes = Union[Type[DependNodeType], Type[DagNodeType], Type[AttributeType], Type[ComponentType]]
 
