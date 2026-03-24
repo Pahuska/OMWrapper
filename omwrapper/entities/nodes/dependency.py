@@ -46,7 +46,7 @@ class DependNode(MayaObject):
         return {'MObjectHandle': om.MObjectHandle(mobj)}
 
     @recycle_mfn
-    def rename_(self, name:str, mfn:om.MFnDependencyNode) -> str:
+    def rename_(self, name:str, mfn:om.MFnDependencyNode=None) -> str:
         """
         Rename the node - NOT UNDOABLE -
 
@@ -91,10 +91,6 @@ class DependNode(MayaObject):
         """
         mfn = om.MFnDependencyNode(self.api_mobject())
         return mfn.hasAttribute(name)
-
-    #ToDo: can we overload this to either pass a AttrData or a set of kwargs that will be made into a AttrData within
-    # the method ?
-
     @overload
     def add_attr(self, data:AttrData, _modifier:DGModifier=None):
         ...
@@ -102,7 +98,6 @@ class DependNode(MayaObject):
     def add_attr(self, *args, _modifier:DGModifier=None, **kwargs):
         ...
 
-    #FixMe: we can't have data here as a parameter, we gotta look for it in args or kwargs
     def add_attr(self, *args, _modifier:DGModifier=None, **kwargs):
         """
         Adds a new attribute to this node, based on the provided AttrData. Search AttrData's doc for more information.
@@ -186,7 +181,7 @@ class DependNode(MayaObject):
             raise AttributeError(f'{self.name()} has no attribute named {name}')
 
     @recycle_mfn
-    def is_locked(self, mfn:om.MFnDependencyNode) -> bool:
+    def is_locked(self, mfn:om.MFnDependencyNode=None) -> bool:
         """
         Whether this node is locked or not
 
@@ -199,11 +194,11 @@ class DependNode(MayaObject):
         return locked
 
     @recycle_mfn
-    def set_locked_(self, value:bool, mfn:om.MFnDependencyNode):
+    def set_locked_(self, value:bool, mfn:om.MFnDependencyNode=None):
         mfn.isLocked = value
 
     @recycle_mfn
-    def set_locked(self, value:bool, mfn:om.MFnDependencyNode):
+    def set_locked(self, value:bool, mfn:om.MFnDependencyNode=None):
         old_value = mfn.isLocked
         modifier = ProxyModifier(do_func=self.set_locked_, do_kwargs={'value':value, 'mfn':mfn},
                                  undo_kwargs={'value':old_value, 'mfn':mfn})

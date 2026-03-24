@@ -195,3 +195,21 @@ def sequence_product(seq:Sequence):
     for n in seq:
         count *= n
     return count
+
+def list_to_slice(seq:Sequence):
+    it = iter(seq)
+    start = next(it)
+    slices = []
+    for i, x in enumerate(it):
+        if x - seq[i] != 1:
+            end = seq[i]
+            if start == end:
+                slices.append([start])
+            else:
+                slices.append([start, end])
+            start = x
+    if seq[-1] == start:
+        slices.append([start])
+    else:
+        slices.append([start, seq[-1]])
+    return slices

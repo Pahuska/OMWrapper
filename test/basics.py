@@ -15,7 +15,7 @@ from omwrapper.api.modifiers.maya import DGModifier
 from omwrapper.constants import AttrType, DataType
 from omwrapper.entities.attributes.base import AttrData, AttrContext
 from omwrapper.entities.nodes.dependency import DependNode
-from omwrapper.general import pyobject, create_node, select_
+from omwrapper.general import pyobject, create_node, select
 
 cmds.file(new=True, force=True)
 
@@ -49,7 +49,7 @@ attributes = [ikfk, compound, float_a, enum_b,string_c, vector_d]
 for at in attributes:
     node.add_attr(at)
 
-py_node = pyobject(cmds.polySphere()[0]) # type: DependNode
+py_node = pyobject(cmds.polySphere()[0]) # type: Transform
 mod = DGModifier()
 with AttrContext(py_node.attr_handler(), mod, undo=True):
     for at in attributes:
@@ -66,4 +66,10 @@ n = node.float_a.name()
 
 child.add_attr('ikfk', data_type=DataType.BOOL, default_value=True, keyable=True)
 
-select_(node, child)
+select(node, child)
+
+shape = py_node.get_shape()
+mod = om.MDagModifier()
+mod.reparentNode(shape.api_mobject(), child.api_mobject())
+
+child_obj = child.api_mobject()

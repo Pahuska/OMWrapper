@@ -1,8 +1,10 @@
+from __future__ import annotations
 from typing import Dict, Union
 
 from maya.api import OpenMaya as om
 
 from omwrapper.api import apiundo
+from omwrapper.api.modifiers.custom import ProxyModifier
 from omwrapper.api.modifiers.maya import DagModifier
 from omwrapper.api.utilities import name_to_api
 from omwrapper.entities.base import TMayaObjectApi, recycle_mfn
@@ -45,9 +47,13 @@ class DagNode(DependNode):
         return self._factory(MObject=mobj)
 
     @recycle_mfn
-    def get_children(self, mfn:om.MFnDagNode) -> "DagNode":
+    def get_children(self, mfn:om.MFnDagNode=None) -> "DagNode":
         for x in range(mfn.childCount()):
             yield self._factory(MObject=mfn.child(x))
+
+    @recycle_mfn
+    def get_child(self, index:int, mfn:om.MFnDagNode=None):
+        return self._factory(MObject=mfn.child(index))
 
     def _get_selectable_object(self) -> om.MDagPath:
         return self.api_dagpath()
@@ -99,3 +105,171 @@ class DagNode(DependNode):
         mod.doIt()
         apiundo.commit(undo=mod.undoIt, redo=mod.doIt)
         return cls._factory(MObject=obj)
+
+    @recycle_mfn
+    def add_child_(self, node:Union["DagNode", om.MObject, om.MObjectHandle], index:int=None, keep_parent:bool=False, mfn:om.MFnDagNode=None):
+        """
+        [NOT UNDOABLE]
+        Insert the given node in the hierarchy of the current node at the given index.
+
+        Parameters:
+            node (DagNode, MObject, MObjectHandle): the node to add in the current node hierarchy
+            index (int, Optional): the position of the node in the hierarchy
+            keep_parent (Bool, Optional): if True, the node will be removed from its current parent(s). Defaults to True
+            mfn (MFnAttribute, optional): The attribute function set (`MFnAttribute`) to retrieve the name from.
+                If not provided, the decorator or other logic may handle the setup. Defaults to None.
+
+        Returns:
+            None
+        """
+        if not isinstance(node, om.MObject):
+            node = node.api_mobject()
+        elif isinstance(node, om.MObjectHandle):
+            node = node.object()
+
+        if index is None:
+            index = mfn.kNextPos
+        mfn.addChild(node, index, keep_parent)
+
+    @recycle_mfn
+    def remove_child_(self, node:Union["DagNode", om.MObject, om.MObjectHandle], mfn:om.MFnDagNode=None):
+        """
+        [NOT UNDOABLE]
+        remove the given node from the hierarchy of the current node.
+
+        Parameters:
+            node (DagNode, MObject, MObjectHandle): the node to remove in the current node hierarchy
+            mfn (MFnAttribute, optional): The attribute function set (`MFnAttribute`) to retrieve the name from.
+                If not provided, the decorator or other logic may handle the setup. Defaults to None.
+
+        Returns:
+            None
+        """
+
+        if not isinstance(node, om.MObject):
+            node = node.api_mobject()
+        elif isinstance(node, om.MObjectHandle):
+            node = node.object()
+
+        mfn.removeChild(node)
+
+    @recycle_mfn
+    def remove_child_at_(self, index:int, mfn: om.MFnDagNode = None):
+        """
+        [NOT UNDOABLE]
+        remove the node at the given index from the hierarchy of the current node.
+
+        Parameters:
+            index (int): the index of the child to be removed
+            mfn (MFnAttribute, optional): The attribute function set (`MFnAttribute`) to retrieve the name from.
+                If not provided, the decorator or other logic may handle the setup. Defaults to None.
+
+        Returns:
+            None
+        """
+        mfn.removeChildAt(index)
+
+    @recycle_mfn
+    def add_child(self, node: Union["DagNode", om.MObject, om.MObjectHandle], index: int = None, keep_parent: bool = False,
+                   mfn: om.MFnDagNode = None):
+        """
+        [UNDOABLE]
+        Insert the given node in the hierarchy of the current node at the given index.
+
+        Parameters:
+            node (DagNode, MObject, MObjectHandle): the node to add in the current node hierarchy
+            index (int, Optional): the position of the node in the hierarchy
+            keep_parent (Bool, Optional): if True, the node will be removed from its current parent(s). Defaults to True
+            mfn (MFnAttribute, optional): The attribute function set (`MFnAttribute`) to retrieve the name from.
+                If not provided, the decorator or other logic may handle the setup. Defaults to None.
+
+        Returns:
+            None
+        """
+        if not isinstance(node, om.MObject):
+            node = node.api_mobject()
+        elif isinstance(node, om.MObjectHandle):
+            node = node.object()
+
+        parents = []
+        ids = []
+
+        # If keep_parent is false, then we need to restore them in the undoing function, so we're building a list of all
+        #  the parents and another of the indices of the child in each parent
+        if not keep_parent:
+            child_fn = om.MFnDagNode(node)
+            parents = [child_fn.parent(x) for x in range(child_fn.parentCount())]
+            for parent in parents:
+                fn = om.MFnDagNode(parent)
+                for x in range(fn.childCount()):
+                    if fn.child(x) == node:
+                        ids.append(x)
+                        break
+
+        def undo_func():
+            mfn.removeChild(node)
+            if not keep_parent:
+                for p, idx in zip(parents, ids):
+                    f = om.MFnDagNode(p)
+                    f.addChild(node, index=idx, keepExistingParents=True)
+
+        do_kwargs = {'node':node, 'index':index, 'keep_parent':keep_parent, 'mfn':mfn}
+        mod = ProxyModifier(do_func=self.add_child_, do_kwargs=do_kwargs, undo_func=undo_func)
+        mod.doIt()
+        apiundo.commit(undo=mod.undoIt, redo=mod.doIt)
+
+
+    @recycle_mfn
+    def remove_child(self, node: Union["DagNode", om.MObject, om.MObjectHandle], mfn: om.MFnDagNode = None):
+        """
+        [UNDOABLE]
+        remove the given node from the hierarchy of the current node.
+
+        Parameters:
+            node (DagNode, MObject, MObjectHandle): the node to remove in the current node hierarchy
+            mfn (MFnAttribute, optional): The attribute function set (`MFnAttribute`) to retrieve the name from.
+                If not provided, the decorator or other logic may handle the setup. Defaults to None.
+
+        Returns:
+            None
+        """
+        if not isinstance(node, om.MObject):
+            node = node.api_mobject()
+        elif isinstance(node, om.MObjectHandle):
+            node = node.object()
+
+        index = None
+        for x in range(mfn.childCount()):
+            if mfn.child(x) == node:
+                index = x
+                break
+
+        do_kwargs = {'node': node, 'mfn': mfn}
+        undo_kwargs = {'node': node, 'index': index, 'keep_parent': True, 'mfn': mfn}
+        mod = ProxyModifier(do_func=self.remove_child_, do_kwargs=do_kwargs,
+                            undo_func=self.add_child_, undo_kwargs=undo_kwargs)
+        mod.doIt()
+        apiundo.commit(undo=mod.undoIt, redo=mod.doIt)
+
+    @recycle_mfn
+    def remove_child_at(self, index: int, mfn: om.MFnDagNode = None):
+        """
+        [UNDOABLE]
+        remove the node at the given index from the hierarchy of the current node.
+
+        Parameters:
+            index (int): the index of the child to be removed
+            mfn (MFnAttribute, optional): The attribute function set (`MFnAttribute`) to retrieve the name from.
+                If not provided, the decorator or other logic may handle the setup. Defaults to None.
+
+        Returns:
+            None
+        """
+        node = mfn.child(index)
+
+        do_kwargs = {'index': index, 'mfn': mfn}
+        undo_kwargs = {'node': node, 'index': index, 'keep_parent': True, 'mfn': mfn}
+        mod = ProxyModifier(do_func=self.remove_child_at_, do_kwargs=do_kwargs,
+                            undo_func=self.add_child_, undo_kwargs=undo_kwargs)
+        mod.doIt()
+        apiundo.commit(undo=mod.undoIt, redo=mod.doIt)

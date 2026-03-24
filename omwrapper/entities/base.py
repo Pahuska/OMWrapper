@@ -137,6 +137,7 @@ def recycle_mfn(func:Callable):
         return result
     return wrapped
 
+#ToDo: not sure this is the right place for this v
 def undoable_proxy_wrap(get_method:Callable, set_method:Callable, undo_kwargs_override:dict=None):
     """
     A decorator that helps to wrap non-undoable methods into a ProxyModifier to make them undoable. This is typically
@@ -164,8 +165,6 @@ def undoable_proxy_wrap(get_method:Callable, set_method:Callable, undo_kwargs_ov
             set_signature = inspect.signature(set_method)
             do_bound_args = set_signature.bind(*args, **kwargs)
             do_bound_args.apply_defaults()
-            #ToDo: maybe copy the arguments dict, and pop parameters that are exclusively positional, put them in a
-            # separate variable called do_args, and the remaining elements in do_kwargs
             do_kwargs = do_bound_args.arguments
 
             # Get the signature of get_method and fill it with the matching kwargs from set_method, then get the current

@@ -170,7 +170,6 @@ class PyObject:
                 _class = user_class_manager.get_user_class(_class, mobj)
             except ValueError:
                 ...
-            #ToDo: test this ^
 
             return _class(**kwargs)
 

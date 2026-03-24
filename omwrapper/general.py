@@ -79,7 +79,6 @@ def selected() -> List[MayaObject]:
     """
     return factory.from_selection_list(om.MGlobal.getActiveSelectionList())
 
-#ToDo : go for *args instead of objects:List
 def select_(*args:Union[MayaObject, str], add:bool=False, deselect:bool=False,
            toggle:bool=False, clear:bool=False):
     current_sel = om.MGlobal.getActiveSelectionList()
@@ -114,8 +113,12 @@ def select_(*args:Union[MayaObject, str], add:bool=False, deselect:bool=False,
 
     om.MGlobal.setActiveSelectionList(current_sel)
 
-#FixMe: does not work because we can't trick *args to be passed as a kwarg
-@undoable_proxy_wrap(selected, select_, {'add':False, 'deselect':False, 'toggle':False, 'clear':False})
 def select(*args:Union[MayaObject, str], add:bool=False, deselect:bool=False,
            toggle:bool=False, clear:bool=False):
-    ...
+    sel = selected()
+    kwargs = {'add':add, 'deselect':deselect, 'toggle':toggle, 'clear':clear}
+    mod = ProxyModifier(do_func=select_, undo_func=select_,
+                        do_args=args, do_kwargs=kwargs,
+                        undo_args=[sel], undo_kwargs=kwargs)
+    apiundo.commit(undo=mod.undoIt, redo=mod.doIt)
+    mod.doIt()
